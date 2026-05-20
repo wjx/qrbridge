@@ -178,14 +178,14 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                   <ChevronLeft className="w-5 h-5" />
                 </Button>
                 
-                <div className="flex flex-col items-center p-6 border rounded-lg bg-white min-w-[250px]">
-                  <div className="mb-3 text-sm font-medium text-gray-700">
+                <div className="flex flex-col items-center p-6 border rounded-lg bg-white">
+                  <div className="mb-4 text-sm font-medium text-gray-700">
                     {currentIndex + 1} of {qrCodes.length}
                   </div>
                   <QRCodeSVG
                     ref={(el) => { qrRefs.current[currentIndex] = el; }}
                     value={qrCodes[currentIndex]}
-                    size={200}
+                    size={280}
                     level="M"
                     includeMargin
                   />

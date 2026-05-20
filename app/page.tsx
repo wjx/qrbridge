@@ -16,10 +16,10 @@ export default function Home() {
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight mb-2">
-            QR 码工具
+            QR Bridge
           </h1>
           <p className="text-muted-foreground">
-            生成和扫描二维码，支持长文本自动分段
+            Generate and scan QR codes with automatic text chunking
           </p>
         </div>
 
@@ -35,7 +35,7 @@ export default function Home() {
               }`}
             >
               <QrCode className="w-4 h-4" />
-              生成二维码
+              Generate
             </button>
             <button
               onClick={() => setMode("scan")}
@@ -46,7 +46,7 @@ export default function Home() {
               }`}
             >
               <ScanLine className="w-4 h-4" />
-              扫描模式
+              Scan
             </button>
           </div>
         </div>
@@ -57,7 +57,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-12 text-center text-sm text-muted-foreground">
           <p>
-            💡 提示: 长文本会自动分割成多个二维码，扫描时按顺序扫描即可自动合并
+            Tip: Long text is automatically split into multiple QR codes. Scan them in order to merge.
           </p>
         </footer>
       </div>

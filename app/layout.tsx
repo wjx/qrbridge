@@ -7,8 +7,8 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'QR码工具 - 生成与扫描',
-  description: '支持长文本分段的二维码生成和扫描工具',
+  title: 'QR Bridge - Generate & Scan',
+  description: 'Generate and scan QR codes with automatic text chunking for long content',
   generator: 'v0.app',
   icons: {
     icon: [

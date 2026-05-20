@@ -51,7 +51,7 @@ export function QRScanner() {
 
     const parsed = parseQRData(decodedText);
     if (!parsed) {
-      setError("无法解析二维码内容");
+      setError("Unable to parse QR code content");
       return;
     }
 
@@ -91,7 +91,7 @@ export function QRScanner() {
       setIsScanning(true);
     } catch (err) {
       console.error("Scanner error:", err);
-      setError("无法访问摄像头。请确保已授予摄像头权限，并且没有其他应用正在使用摄像头。");
+      setError("Unable to access camera. Please ensure camera permissions are granted and no other app is using the camera.");
     }
   };
 
@@ -156,7 +156,7 @@ export function QRScanner() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">扫描二维码</CardTitle>
+          <CardTitle className="text-lg">Scan QR Codes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -177,12 +177,12 @@ export function QRScanner() {
             {!isScanning ? (
               <Button onClick={startScanning}>
                 <Camera className="w-4 h-4 mr-2" />
-                开始扫描
+                Start Scanning
               </Button>
             ) : (
               <Button variant="destructive" onClick={stopScanning}>
                 <StopCircle className="w-4 h-4 mr-2" />
-                停止扫描
+                Stop Scanning
               </Button>
             )}
             <Button
@@ -191,7 +191,7 @@ export function QRScanner() {
               disabled={scannedChunks.size === 0}
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              清空结果
+              Clear Results
             </Button>
           </div>
 
@@ -199,7 +199,7 @@ export function QRScanner() {
             <div className="text-center">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary">
                 <span className="text-sm font-medium">
-                  扫描进度: {scannedChunks.size} / {totalChunks}
+                  Progress: {scannedChunks.size} / {totalChunks}
                 </span>
                 {isComplete && (
                   <Check className="w-4 h-4 text-green-600" />
@@ -207,7 +207,7 @@ export function QRScanner() {
               </div>
               {!isComplete && getMissingChunks().length > 0 && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  待扫描: 第 {getMissingChunks().join(", ")} 个
+                  Missing: #{getMissingChunks().join(", #")}
                 </p>
               )}
             </div>
@@ -219,10 +219,10 @@ export function QRScanner() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">
-              扫描结果
+              Scan Results
               {isComplete && (
                 <span className="ml-2 text-sm font-normal text-green-600">
-                  (已完成)
+                  (Complete)
                 </span>
               )}
             </CardTitle>
@@ -235,12 +235,12 @@ export function QRScanner() {
                 {copied ? (
                   <>
                     <Check className="w-4 h-4 mr-2" />
-                    已复制
+                    Copied
                   </>
                 ) : (
                   <>
                     <Copy className="w-4 h-4 mr-2" />
-                    复制文本
+                    Copy Text
                   </>
                 )}
               </Button>
@@ -271,12 +271,12 @@ export function QRScanner() {
 
               <div className="p-4 bg-muted rounded-lg">
                 <pre className="whitespace-pre-wrap break-all text-sm font-mono">
-                  {getFullText() || "等待扫描..."}
+                  {getFullText() || "Waiting for scan..."}
                 </pre>
               </div>
 
               <p className="text-sm text-muted-foreground">
-                已扫描文本长度: {getFullText().length} 字符
+                Scanned text length: {getFullText().length} characters
               </p>
             </div>
           </CardContent>
@@ -288,8 +288,8 @@ export function QRScanner() {
           <CardContent className="py-8">
             <div className="text-center text-muted-foreground">
               <RefreshCw className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>点击&quot;开始扫描&quot;使用摄像头扫描二维码</p>
-              <p className="text-sm mt-2">支持扫描多个二维码并自动合并内容</p>
+              <p>Click &quot;Start Scanning&quot; to use your camera</p>
+              <p className="text-sm mt-2">Supports scanning multiple QR codes and auto-merging content</p>
             </div>
           </CardContent>
         </Card>

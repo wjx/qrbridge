@@ -52,6 +52,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
     const img = new Image();
+    img.crossOrigin = "anonymous";
     
     img.onload = () => {
       canvas.width = img.width;
@@ -81,23 +82,23 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">输入文本</CardTitle>
+          <CardTitle className="text-lg">Input Text</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="text-input">粘贴或输入文本内容</Label>
+            <Label htmlFor="text-input">Paste or enter your text content</Label>
             <Textarea
               id="text-input"
-              placeholder="在此输入或粘贴要转换的文本..."
+              placeholder="Enter or paste the text to convert..."
               value={text}
               onChange={(e) => setText(e.target.value)}
               className="min-h-[150px] font-mono text-sm"
             />
             <p className="text-sm text-muted-foreground">
-              当前文本长度: {text.length} 字符
+              Current length: {text.length} characters
               {text.length > chunkSize && (
                 <span className="ml-2 text-primary">
-                  (将生成 {Math.ceil(text.length / chunkSize)} 个二维码)
+                  (Will generate {Math.ceil(text.length / chunkSize)} QR codes)
                 </span>
               )}
             </p>
@@ -105,7 +106,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
             <div className="space-y-2 w-full sm:w-auto">
-              <Label htmlFor="chunk-size">每段字符数</Label>
+              <Label htmlFor="chunk-size">Characters per chunk</Label>
               <Input
                 id="chunk-size"
                 type="number"
@@ -117,21 +118,21 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
               />
             </div>
             <p className="text-xs text-muted-foreground hidden sm:block">
-              建议: 50-500字符 (较小的值生成更易扫描的二维码)
+              Recommended: 50-500 characters (smaller values produce easier-to-scan QR codes)
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Button onClick={generateQRCodes} disabled={!text.trim()}>
-              生成二维码
+              Generate QR Codes
             </Button>
             <Button variant="outline" onClick={copyToClipboard} disabled={!text.trim()}>
               <Copy className="w-4 h-4 mr-2" />
-              复制文本
+              Copy Text
             </Button>
             <Button variant="outline" onClick={clearAll} disabled={!text.trim() && qrCodes.length === 0}>
               <Trash2 className="w-4 h-4 mr-2" />
-              清空
+              Clear
             </Button>
           </div>
         </CardContent>
@@ -141,18 +142,18 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">
-              生成的二维码 ({qrCodes.length} 个)
+              Generated QR Codes ({qrCodes.length})
             </CardTitle>
             {qrCodes.length > 1 && (
               <Button variant="outline" size="sm" onClick={downloadAllQRs}>
                 <Download className="w-4 h-4 mr-2" />
-                下载全部
+                Download All
               </Button>
             )}
           </CardHeader>
           <CardContent>
             <p className="text-sm text-muted-foreground mb-4">
-              请按顺序扫描以下二维码以获取完整文本
+              Scan these QR codes in order to retrieve the full text
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {qrCodes.map((chunk, index) => (
@@ -161,7 +162,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                   className="flex flex-col items-center p-4 border rounded-lg bg-white"
                 >
                   <div className="mb-2 text-sm font-medium text-gray-700">
-                    第 {index + 1} / {qrCodes.length} 个
+                    {index + 1} of {qrCodes.length}
                   </div>
                   <QRCodeSVG
                     ref={(el) => { qrRefs.current[index] = el; }}
@@ -177,7 +178,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                     onClick={() => downloadQR(index)}
                   >
                     <Download className="w-4 h-4 mr-1" />
-                    下载
+                    Download
                   </Button>
                 </div>
               ))}

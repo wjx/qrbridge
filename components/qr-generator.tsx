@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Copy, Trash2 } from "lucide-react";
+import { Download, Copy, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface QRGeneratorProps {
   onGeneratedData?: (chunks: string[]) => void;
@@ -17,6 +17,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const [text, setText] = useState("");
   const [chunkSize, setChunkSize] = useState(500);
   const [qrCodes, setQrCodes] = useState<string[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
 
   const splitText = (text: string, size: number): string[] => {
@@ -36,12 +37,22 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     if (!text.trim()) return;
     const chunks = splitText(text, chunkSize);
     setQrCodes(chunks);
+    setCurrentIndex(0);
     onGeneratedData?.(chunks);
   };
 
   const clearAll = () => {
     setText("");
     setQrCodes([]);
+    setCurrentIndex(0);
+  };
+
+  const goToPrevious = () => {
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : prev));
+  };
+
+  const goToNext = () => {
+    setCurrentIndex((prev) => (prev < qrCodes.length - 1 ? prev + 1 : prev));
   };
 
   const downloadQR = (index: number) => {
@@ -155,33 +166,67 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
             <p className="text-sm text-muted-foreground mb-4">
               Scan these QR codes in order to retrieve the full text
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {qrCodes.map((chunk, index) => (
-                <div
-                  key={index}
-                  className="flex flex-col items-center p-4 border rounded-lg bg-white"
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-4">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToPrevious}
+                  disabled={currentIndex === 0}
+                  className="h-10 w-10"
                 >
-                  <div className="mb-2 text-sm font-medium text-gray-700">
-                    {index + 1} of {qrCodes.length}
+                  <ChevronLeft className="w-5 h-5" />
+                </Button>
+                
+                <div className="flex flex-col items-center p-6 border rounded-lg bg-white min-w-[250px]">
+                  <div className="mb-3 text-sm font-medium text-gray-700">
+                    {currentIndex + 1} of {qrCodes.length}
                   </div>
                   <QRCodeSVG
-                    ref={(el) => { qrRefs.current[index] = el; }}
-                    value={chunk}
-                    size={180}
+                    ref={(el) => { qrRefs.current[currentIndex] = el; }}
+                    value={qrCodes[currentIndex]}
+                    size={200}
                     level="M"
                     includeMargin
                   />
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="mt-2"
-                    onClick={() => downloadQR(index)}
+                    className="mt-3"
+                    onClick={() => downloadQR(currentIndex)}
                   >
                     <Download className="w-4 h-4 mr-1" />
                     Download
                   </Button>
                 </div>
-              ))}
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={goToNext}
+                  disabled={currentIndex === qrCodes.length - 1}
+                  className="h-10 w-10"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </Button>
+              </div>
+
+              {qrCodes.length > 1 && (
+                <div className="flex gap-1.5 mt-4">
+                  {qrCodes.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentIndex(index)}
+                      className={`w-2 h-2 rounded-full transition-colors ${
+                        index === currentIndex
+                          ? "bg-primary"
+                          : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                      }`}
+                      aria-label={`Go to QR code ${index + 1}`}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

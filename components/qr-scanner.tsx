@@ -5,7 +5,8 @@ import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw } from "lucide-react";
+import { useSession } from "@/components/session-provider";
+import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2 } from "lucide-react";
 
 interface ScannedChunk {
   index: number;
@@ -21,8 +22,10 @@ export function QRScanner() {
   const [lastScanned, setLastScanned] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [copied, setCopied] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { activeCode, saveToSession } = useSession();
 
   const parseQRData = (data: string): ScannedChunk | null => {
     // Parse format: [chunk_index/total_chunks]content
@@ -128,6 +131,21 @@ export function QRScanner() {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleSaveToSession = async () => {
+    const text = getFullText();
+    if (!text) return;
+    setSaveState("saving");
+    setError("");
+    const result = await saveToSession(text);
+    if (result.ok) {
+      setSaveState("saved");
+      setTimeout(() => setSaveState("idle"), 2000);
+    } else {
+      setSaveState("idle");
+      setError(result.error ?? "Failed to save to session.");
     }
   };
 
@@ -241,6 +259,29 @@ export function QRScanner() {
                   <>
                     <Copy className="w-4 h-4 mr-2" />
                     Copy Text
+                  </>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveToSession}
+                disabled={saveState !== "idle" || !getFullText()}
+                title={activeCode ? `Save to session ${activeCode}` : "Create or join a session first"}
+              >
+                {saveState === "saving" ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving
+                  </>
+                ) : saveState === "saved" ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Save to session
                   </>
                 )}
               </Button>

@@ -267,7 +267,7 @@ export function QRScanner() {
                 size="sm"
                 className="flex-1 sm:flex-none"
                 onClick={handleSaveToSession}
-                disabled={saveState !== "idle" || !getFullText()}
+                disabled={saveState !== "idle" || !getFullText() || !activeCode}
                 title={activeCode ? `Save to session ${activeCode}` : "Create or join a session first"}
               >
                 {saveState === "saving" ? (
@@ -288,6 +288,11 @@ export function QRScanner() {
                 )}
               </Button>
             </div>
+            {!activeCode && getFullText() && (
+              <p className="w-full text-sm text-muted-foreground sm:text-right">
+                Create or join a session first to save your scan.
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

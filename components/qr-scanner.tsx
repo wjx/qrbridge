@@ -235,7 +235,7 @@ export function QRScanner() {
 
       {scannedChunks.size > 0 && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle className="text-lg">
               Scan Results
               {isComplete && (
@@ -244,10 +244,11 @@ export function QRScanner() {
                 </span>
               )}
             </CardTitle>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={copyToClipboard}
               >
                 {copied ? (
@@ -264,6 +265,7 @@ export function QRScanner() {
               </Button>
               <Button
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={handleSaveToSession}
                 disabled={saveState !== "idle" || !getFullText()}
                 title={activeCode ? `Save to session ${activeCode}` : "Create or join a session first"}

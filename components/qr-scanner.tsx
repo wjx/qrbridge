@@ -58,6 +58,11 @@ export function QRScanner() {
       return;
     }
 
+    // Haptic feedback on a successful new scan (Android browsers; iOS Safari has no support)
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(80);
+    }
+
     setScannedChunks((prev) => {
       const newMap = new Map(prev);
       if (!newMap.has(parsed.index)) {

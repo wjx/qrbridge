@@ -190,14 +190,14 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
               </Button>
             </div>
 
-            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6">
+            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6 md:max-w-xl lg:max-w-2xl">
               <QRCodeSVG
                 ref={(el) => { qrRefs.current[currentIndex] = el; }}
                 value={qrCodes[currentIndex]}
-                size={420}
+                size={640}
                 level="Q"
                 includeMargin
-                className="size-full max-w-md"
+                className="size-full max-w-md md:max-w-xl lg:max-w-2xl"
                 aria-label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
               />
               <Button

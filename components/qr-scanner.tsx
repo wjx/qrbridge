@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useSession } from "@/components/session-provider";
-import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2 } from "lucide-react";
+import { useScreenQRScanner } from "@/hooks/use-screen-qr-scanner";
+import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
 
 interface ScannedChunk {
   index: number;
@@ -78,9 +79,23 @@ export function QRScanner() {
     setError("");
   }, [lastScanned, totalChunks]);
 
+  const {
+    isSupported: isScreenCaptureSupported,
+    isScreenScanning,
+    screenError,
+    videoRef,
+    startScreenScanning,
+    stopScreenScanning,
+  } = useScreenQRScanner({ onDecode: handleScanSuccess });
+
   const startScanning = async () => {
     setError("");
-    
+
+    // Screen capture and camera scanning are mutually exclusive
+    if (isScreenScanning) {
+      stopScreenScanning();
+    }
+
     try {
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode("qr-reader");
@@ -112,6 +127,15 @@ export function QRScanner() {
       }
     }
     setIsScanning(false);
+  };
+
+  const handleStartScreenScanning = async () => {
+    setError("");
+    // Screen capture and camera scanning are mutually exclusive
+    if (isScanning) {
+      await stopScanning();
+    }
+    await startScreenScanning();
   };
 
   const clearScannedData = () => {
@@ -156,6 +180,13 @@ export function QRScanner() {
 
   const isComplete = totalChunks !== null && scannedChunks.size === totalChunks;
 
+  // Auto-stop screen capture once every chunk has been collected
+  useEffect(() => {
+    if (isComplete && isScreenScanning) {
+      stopScreenScanning();
+    }
+  }, [isComplete, isScreenScanning, stopScreenScanning]);
+
   useEffect(() => {
     return () => {
       if (scannerRef.current) {
@@ -190,9 +221,26 @@ export function QRScanner() {
             }`}
           />
 
-          {error && (
+          <div className={`w-full max-w-md mx-auto ${isScreenScanning ? "" : "hidden"}`}>
+            <div className="relative overflow-hidden rounded-lg border bg-muted">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video ref={videoRef} muted playsInline className="w-full" aria-label="Screen capture preview" />
+              <div className="absolute top-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium backdrop-blur">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                </span>
+                Scanning screen...
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground text-center mt-2 text-pretty">
+              QR codes visible on the captured screen are detected automatically. Page through multiple codes to collect them all.
+            </p>
+          </div>
+
+          {(error || screenError) && (
             <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
+              <AlertDescription>{error || screenError}</AlertDescription>
             </Alert>
           )}
 
@@ -208,6 +256,18 @@ export function QRScanner() {
                 Stop Scanning
               </Button>
             )}
+            {isScreenCaptureSupported &&
+              (!isScreenScanning ? (
+                <Button variant="secondary" onClick={handleStartScreenScanning}>
+                  <Monitor className="w-4 h-4 mr-2" />
+                  Capture Screen
+                </Button>
+              ) : (
+                <Button variant="destructive" onClick={stopScreenScanning}>
+                  <MonitorX className="w-4 h-4 mr-2" />
+                  Stop Capture
+                </Button>
+              ))}
             <Button
               variant="outline"
               onClick={clearScannedData}
@@ -336,12 +396,15 @@ export function QRScanner() {
         </Card>
       )}
 
-      {scannedChunks.size === 0 && !isScanning && (
+      {scannedChunks.size === 0 && !isScanning && !isScreenScanning && (
         <Card className="border-dashed">
           <CardContent className="py-8">
             <div className="text-center text-muted-foreground">
               <RefreshCw className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Click &quot;Start Scanning&quot; to use your camera</p>
+              <p>
+                Click &quot;Start Scanning&quot; to use your camera
+                {isScreenCaptureSupported && <>, or &quot;Capture Screen&quot; to read QR codes on your screen</>}
+              </p>
               <p className="text-sm mt-2">Supports scanning multiple QR codes and auto-merging content</p>
             </div>
           </CardContent>

@@ -150,84 +150,83 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
       </Card>
 
       {qrCodes.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">
-              Generated QR Codes ({qrCodes.length})
-            </CardTitle>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-start justify-between gap-4 border-b bg-muted/30">
+            <div className="flex flex-col gap-1">
+              <CardTitle className="text-lg">Generated QR Codes</CardTitle>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Scan each code in order to retrieve the full text.
+              </p>
+            </div>
             {qrCodes.length > 1 && (
               <Button variant="outline" size="sm" onClick={downloadAllQRs}>
-                <Download className="w-4 h-4 mr-2" />
+                <Download data-icon="inline-start" />
                 Download All
               </Button>
             )}
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Scan these QR codes in order to retrieve the full text
-            </p>
-            <div className="flex flex-col items-center">
-              <div className="flex items-center gap-4">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={goToPrevious}
-                  disabled={currentIndex === 0}
-                  className="h-10 w-10"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </Button>
-                
-                <div className="flex flex-col items-center p-6 border rounded-lg bg-white">
-                  <div className="mb-4 text-sm font-medium text-gray-700">
-                    {currentIndex + 1} of {qrCodes.length}
-                  </div>
-                  <QRCodeSVG
-                    ref={(el) => { qrRefs.current[currentIndex] = el; }}
-                    value={qrCodes[currentIndex]}
-                    size={280}
-                    level="M"
-                    includeMargin
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-3"
-                    onClick={() => downloadQR(currentIndex)}
-                  >
-                    <Download className="w-4 h-4 mr-1" />
-                    Download
-                  </Button>
-                </div>
-
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={goToNext}
-                  disabled={currentIndex === qrCodes.length - 1}
-                  className="h-10 w-10"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </Button>
-              </div>
-
-              {qrCodes.length > 1 && (
-                <div className="flex gap-1.5 mt-4">
-                  {qrCodes.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setCurrentIndex(index)}
-                      className={`w-2 h-2 rounded-full transition-colors ${
-                        index === currentIndex
-                          ? "bg-primary"
-                          : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
-                      }`}
-                      aria-label={`Go to QR code ${index + 1}`}
-                    />
-                  ))}
-                </div>
-              )}
+          <CardContent className="flex flex-col items-center gap-5 p-4 sm:p-6 lg:p-8">
+            <div className="flex w-full max-w-xl items-center justify-between gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToPrevious}
+                disabled={currentIndex === 0}
+                aria-label="Show previous QR code"
+              >
+                <ChevronLeft />
+              </Button>
+              <p className="text-sm font-medium tabular-nums text-muted-foreground">
+                Code <span className="text-foreground">{currentIndex + 1}</span> of {qrCodes.length}
+              </p>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={goToNext}
+                disabled={currentIndex === qrCodes.length - 1}
+                aria-label="Show next QR code"
+              >
+                <ChevronRight />
+              </Button>
             </div>
+
+            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6">
+              <QRCodeSVG
+                ref={(el) => { qrRefs.current[currentIndex] = el; }}
+                value={qrCodes[currentIndex]}
+                size={420}
+                level="Q"
+                includeMargin
+                className="size-full max-w-md"
+                aria-label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadQR(currentIndex)}
+              >
+                <Download data-icon="inline-start" />
+                Download QR
+              </Button>
+            </div>
+
+            {qrCodes.length > 1 && (
+              <div className="flex max-w-full flex-wrap justify-center gap-2" aria-label="Choose a QR code">
+                {qrCodes.map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentIndex(index)}
+                    className={`size-2.5 rounded-full transition-colors ${
+                      index === currentIndex
+                        ? "bg-primary"
+                        : "bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                    }`}
+                    aria-label={`Go to QR code ${index + 1}`}
+                    aria-current={index === currentIndex ? "step" : undefined}
+                  />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { redis, sessionKey, type SessionItem } from "@/lib/redis"
 
+const MAX_CONTENT_LENGTH = 100_000
+
 async function readItems(code: string): Promise<SessionItem[] | null> {
   const key = sessionKey(code)
   const exists = await redis.exists(key)
@@ -53,6 +55,17 @@ export async function POST(
     return NextResponse.json({ error: "Content is required." }, { status: 400 })
   }
 
+  if (content.length > MAX_CONTENT_LENGTH) {
+    return NextResponse.json(
+      {
+        error: `Content is too long (${content.length.toLocaleString("en-US")} characters). The maximum is ${MAX_CONTENT_LENGTH.toLocaleString("en-US")} characters.`,
+        contentLength: content.length,
+        maxContentLength: MAX_CONTENT_LENGTH,
+      },
+      { status: 413 },
+    )
+  }
+
   const items = await readItems(code)
   if (items === null) {
     return NextResponse.json(
@@ -63,7 +76,7 @@ export async function POST(
 
   const newItem: SessionItem = {
     id: crypto.randomUUID(),
-    content: content.slice(0, 10000),
+    content,
     createdAt: Date.now(),
   }
   items.push(newItem)

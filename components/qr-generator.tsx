@@ -1,13 +1,29 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Download, Copy, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Download,
+  Copy,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+} from "lucide-react";
 
 interface QRGeneratorProps {
   onGeneratedData?: (chunks: string[]) => void;
@@ -18,7 +34,21 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const [chunkSize, setChunkSize] = useState(500);
   const [qrCodes, setQrCodes] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(2000);
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
+
+  useEffect(() => {
+    if (!isAutoPlaying || qrCodes.length < 2) return;
+
+    const intervalId = window.setInterval(() => {
+      setCurrentIndex((previousIndex) =>
+        previousIndex === qrCodes.length - 1 ? 0 : previousIndex + 1,
+      );
+    }, playbackSpeed);
+
+    return () => window.clearInterval(intervalId);
+  }, [isAutoPlaying, playbackSpeed, qrCodes.length]);
 
   const splitText = (text: string, size: number): string[] => {
     const chunks: string[] = [];
@@ -36,12 +66,14 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const generateQRCodes = () => {
     if (!text.trim()) return;
     const chunks = splitText(text, chunkSize);
+    setIsAutoPlaying(false);
     setQrCodes(chunks);
     setCurrentIndex(0);
     onGeneratedData?.(chunks);
   };
 
   const clearAll = () => {
+    setIsAutoPlaying(false);
     setText("");
     setQrCodes([]);
     setCurrentIndex(0);
@@ -190,14 +222,53 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
               </Button>
             </div>
 
-            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6">
+            {qrCodes.length > 1 && (
+              <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-3">
+                <Button
+                  variant={isAutoPlaying ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setIsAutoPlaying((playing) => !playing)}
+                  aria-pressed={isAutoPlaying}
+                >
+                  {isAutoPlaying ? (
+                    <Pause data-icon="inline-start" />
+                  ) : (
+                    <Play data-icon="inline-start" />
+                  )}
+                  {isAutoPlaying ? "Pause" : "Auto Play"}
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="playback-speed" className="text-sm text-muted-foreground">
+                    Speed
+                  </Label>
+                  <Select
+                    value={String(playbackSpeed)}
+                    onValueChange={(value) => setPlaybackSpeed(Number(value))}
+                  >
+                    <SelectTrigger id="playback-speed" className="w-32" aria-label="Playback speed">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        <SelectItem value="1000">1 second</SelectItem>
+                        <SelectItem value="2000">2 seconds</SelectItem>
+                        <SelectItem value="3000">3 seconds</SelectItem>
+                        <SelectItem value="5000">5 seconds</SelectItem>
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6 md:max-w-xl lg:max-w-2xl">
               <QRCodeSVG
                 ref={(el) => { qrRefs.current[currentIndex] = el; }}
                 value={qrCodes[currentIndex]}
-                size={420}
+                size={640}
                 level="Q"
                 includeMargin
-                className="size-full max-w-md"
+                className="size-full max-w-md md:max-w-xl lg:max-w-2xl"
                 aria-label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
               />
               <Button

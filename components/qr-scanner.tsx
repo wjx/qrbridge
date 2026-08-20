@@ -143,6 +143,7 @@ export function QRScanner() {
     setTotalChunks(null);
     setLastScanned("");
     setError("");
+    setSaveState("idle");
   };
 
   const getFullText = (): string => {
@@ -171,7 +172,6 @@ export function QRScanner() {
     const result = await saveToSession(text);
     if (result.ok) {
       setSaveState("saved");
-      setTimeout(() => setSaveState("idle"), 2000);
     } else {
       setSaveState("idle");
       setError(result.error ?? "Failed to save to session.");

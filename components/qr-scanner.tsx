@@ -5,28 +5,31 @@ import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { useSession } from "@/components/session-provider";
+import {
+  useSession,
+  type ScannedChunk,
+} from "@/components/session-provider";
 import { useScreenQRScanner } from "@/hooks/use-screen-qr-scanner";
 import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
 
-interface ScannedChunk {
-  index: number;
-  total: number;
-  content: string;
-  raw: string;
-}
-
 export function QRScanner() {
   const [isScanning, setIsScanning] = useState(false);
-  const [scannedChunks, setScannedChunks] = useState<Map<number, ScannedChunk>>(new Map());
-  const [totalChunks, setTotalChunks] = useState<number | null>(null);
-  const [lastScanned, setLastScanned] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { activeCode, saveToSession } = useSession();
+  const {
+    activeCode,
+    saveToSession,
+    scannedChunks,
+    setScannedChunks,
+    totalChunks,
+    setTotalChunks,
+    lastScanned,
+    setLastScanned,
+    clearScannedData,
+  } = useSession();
 
   const parseQRData = (data: string): ScannedChunk | null => {
     // Parse format: [chunk_index/total_chunks]content
@@ -139,10 +142,8 @@ export function QRScanner() {
     await startScreenScanning();
   };
 
-  const clearScannedData = () => {
-    setScannedChunks(new Map());
-    setTotalChunks(null);
-    setLastScanned("");
+  const handleClearScannedData = () => {
+    clearScannedData();
     setError("");
     setSaveState("idle");
   };
@@ -280,7 +281,7 @@ export function QRScanner() {
               ))}
             <Button
               variant="outline"
-              onClick={clearScannedData}
+              onClick={handleClearScannedData}
               disabled={scannedChunks.size === 0}
             >
               <Trash2 className="w-4 h-4 mr-2" />

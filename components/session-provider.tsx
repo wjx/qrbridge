@@ -2,10 +2,24 @@
 
 import { createContext, useContext, useEffect, useState, useCallback } from "react"
 
+export interface ScannedChunk {
+  index: number
+  total: number
+  content: string
+  raw: string
+}
+
 interface SessionContextValue {
   activeCode: string | null
   setActiveCode: (code: string | null) => void
   saveToSession: (content: string) => Promise<{ ok: boolean; error?: string }>
+  scannedChunks: Map<number, ScannedChunk>
+  setScannedChunks: React.Dispatch<React.SetStateAction<Map<number, ScannedChunk>>>
+  totalChunks: number | null
+  setTotalChunks: React.Dispatch<React.SetStateAction<number | null>>
+  lastScanned: string
+  setLastScanned: React.Dispatch<React.SetStateAction<string>>
+  clearScannedData: () => void
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
@@ -14,6 +28,11 @@ const STORAGE_KEY = "qrbridge:activeCode"
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [activeCode, setActiveCodeState] = useState<string | null>(null)
+  const [scannedChunks, setScannedChunks] = useState<Map<number, ScannedChunk>>(
+    new Map(),
+  )
+  const [totalChunks, setTotalChunks] = useState<number | null>(null)
+  const [lastScanned, setLastScanned] = useState("")
 
   // Restore the active session code for this tab on mount
   useEffect(() => {
@@ -54,8 +73,27 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [activeCode, setActiveCode],
   )
 
+  const clearScannedData = useCallback(() => {
+    setScannedChunks(new Map())
+    setTotalChunks(null)
+    setLastScanned("")
+  }, [])
+
   return (
-    <SessionContext.Provider value={{ activeCode, setActiveCode, saveToSession }}>
+    <SessionContext.Provider
+      value={{
+        activeCode,
+        setActiveCode,
+        saveToSession,
+        scannedChunks,
+        setScannedChunks,
+        totalChunks,
+        setTotalChunks,
+        lastScanned,
+        setLastScanned,
+        clearScannedData,
+      }}
+    >
       {children}
     </SessionContext.Provider>
   )

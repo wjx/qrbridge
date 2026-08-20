@@ -25,6 +25,7 @@ interface UseScreenQRScannerOptions {
 
 export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
   const [isScreenScanning, setIsScreenScanning] = useState(false);
+  const [isScreenStarting, setIsScreenStarting] = useState(false);
   const [screenError, setScreenError] = useState<string>("");
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -32,6 +33,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<BarcodeDetectorInstance | null>(null);
+  const isStartingRef = useRef(false);
   const onDecodeRef = useRef(onDecode);
   onDecodeRef.current = onDecode;
 
@@ -42,7 +44,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
     setIsSupported(!!navigator.mediaDevices && "getDisplayMedia" in navigator.mediaDevices);
   }, []);
 
-  const stopScreenScanning = useCallback(() => {
+  const releaseScreenResources = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -52,10 +54,18 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
       streamRef.current = null;
     }
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
-    setIsScreenScanning(false);
+    detectorRef.current = null;
   }, []);
+
+  const stopScreenScanning = useCallback(() => {
+    releaseScreenResources();
+    isStartingRef.current = false;
+    setIsScreenStarting(false);
+    setIsScreenScanning(false);
+  }, [releaseScreenResources]);
 
   const scanFrame = useCallback(async () => {
     const video = videoRef.current;
@@ -96,6 +106,8 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
   }, []);
 
   const startScreenScanning = useCallback(async () => {
+    if (isStartingRef.current) return false;
+
     setScreenError("");
 
     if (!isSupported) {
@@ -105,12 +117,43 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
       return false;
     }
 
+    isStartingRef.current = true;
+    setIsScreenStarting(true);
+    releaseScreenResources();
+    setIsScreenScanning(false);
+
+    let stream: MediaStream | null = null;
+
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 10 },
-        audio: false,
-      });
+      try {
+        stream = await navigator.mediaDevices.getDisplayMedia({
+          video: { frameRate: 10 },
+          audio: false,
+        });
+      } catch (initialError) {
+        const errorName = initialError instanceof DOMException ? initialError.name : "";
+        const shouldRetry = ["NotReadableError", "AbortError", "OverconstrainedError"].includes(errorName);
+
+        if (!shouldRetry) throw initialError;
+
+        // Some deployed browser/OS combinations reject additional constraints.
+        // Retry once using the browser's most compatible display-capture request.
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      }
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack || videoTrack.readyState === "ended") {
+        throw new DOMException("No active display video track was returned.", "NotFoundError");
+      }
+
+      const video = videoRef.current;
+      if (!video) {
+        throw new DOMException("Screen preview is not available.", "InvalidStateError");
+      }
+
       streamRef.current = stream;
+      video.srcObject = stream;
+      await video.play();
 
       // Prepare the native detector if available
       if (window.BarcodeDetector) {
@@ -121,16 +164,8 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
         }
       }
 
-      const video = videoRef.current;
-      if (video) {
-        video.srcObject = stream;
-        await video.play();
-      }
-
       // Stop automatically when the user ends sharing via the browser UI
-      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
-        stopScreenScanning();
-      });
+      videoTrack.addEventListener("ended", stopScreenScanning, { once: true });
 
       intervalRef.current = setInterval(() => {
         void scanFrame();
@@ -139,15 +174,34 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
       setIsScreenScanning(true);
       return true;
     } catch (err) {
-      // User cancelled the screen picker — not an error worth showing
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        return false;
+      if (stream) stream.getTracks().forEach((track) => track.stop());
+      releaseScreenResources();
+
+      const errorName = err instanceof DOMException ? err.name : "UnknownError";
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      // Closing the picker or denying permission is an intentional user action.
+      if (errorName === "NotAllowedError") return false;
+
+      console.error("Screen capture error:", { name: errorName, message: errorMessage });
+
+      if (errorName === "NotReadableError" || errorName === "AbortError") {
+        setScreenError(
+          "The browser could not start screen sharing. Close other screen-recording or sharing apps, check your system's screen-recording permission for this browser, then try again."
+        );
+      } else if (errorName === "NotFoundError") {
+        setScreenError("No shareable screen or window was found in this browser or environment.");
+      } else if (errorName === "InvalidStateError") {
+        setScreenError("Screen capture must be started by clicking Capture Screen on the active page.");
+      } else {
+        setScreenError("Unable to capture the screen. Please try again.");
       }
-      console.error("Screen capture error:", err);
-      setScreenError("Unable to capture the screen. Please try again.");
       return false;
+    } finally {
+      isStartingRef.current = false;
+      setIsScreenStarting(false);
     }
-  }, [isSupported, scanFrame, stopScreenScanning]);
+  }, [isSupported, releaseScreenResources, scanFrame, stopScreenScanning]);
 
   useEffect(() => {
     return () => {
@@ -158,6 +212,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
   return {
     isSupported,
     isScreenScanning,
+    isScreenStarting,
     screenError,
     videoRef,
     startScreenScanning,

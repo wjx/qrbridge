@@ -82,6 +82,7 @@ export function QRScanner() {
   const {
     isSupported: isScreenCaptureSupported,
     isScreenScanning,
+    isScreenStarting,
     screenError,
     videoRef,
     startScreenScanning,
@@ -258,9 +259,18 @@ export function QRScanner() {
             )}
             {isScreenCaptureSupported &&
               (!isScreenScanning ? (
-                <Button variant="secondary" onClick={handleStartScreenScanning}>
-                  <Monitor className="w-4 h-4 mr-2" />
-                  Capture Screen
+                <Button
+                  variant="secondary"
+                  onClick={handleStartScreenScanning}
+                  disabled={isScreenStarting}
+                  aria-busy={isScreenStarting}
+                >
+                  {isScreenStarting ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Monitor className="w-4 h-4 mr-2" />
+                  )}
+                  {isScreenStarting ? "Starting Capture..." : "Capture Screen"}
                 </Button>
               ) : (
                 <Button variant="destructive" onClick={stopScreenScanning}>

@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { createFileChunks } from "@/lib/file-transfer";
+import { AdaptiveTransfer } from "@/lib/adaptive-transfer";
+import { createFileChunks, parseTransferChunk } from "@/lib/file-transfer";
 import { advancePlayback, parseFeedback, readClipboard, type Feedback } from "@/lib/clipboard-feedback";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,9 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
 
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
 
+  const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
+  const controllerRef = useRef(new AdaptiveTransfer([]));
+  const [adaptiveStats, setAdaptiveStats] = useState(() => controllerRef.current.tick(0));
   const [feedbackEnabled, setFeedbackEnabled] = useState(false);
   const [feedbackStatus, setFeedbackStatus] = useState("");
   const [feedbackInput, setFeedbackInput] = useState("");
@@ -91,7 +95,12 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const applyFeedback = (raw: string) => {
     const feedback = parseFeedback(raw, transferId.current, qrCodes.length);
     if (!feedback || feedback.revision < (feedbackRef.current?.revision ?? 0)) return false;
+    const previous = feedbackRef.current;
+    // A cumulative ACK must never retract already received chunks.
+    if (previous && feedback.missing.some(index => !previous.missing.includes(index))) return false;
     feedbackRef.current = feedback;
+    controllerRef.current.acknowledge(feedback.missing, performance.now());
+    setAdaptiveStats(controllerRef.current.tick(performance.now()));
     setFeedbackStatus(feedback.missing.length
       ? `Receiver needs ${feedback.missing.length} codes. Applied next round.`
       : "Receiver has collected every code.");
@@ -119,6 +128,28 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   }, [feedbackEnabled, qrCodes]);
 
   useEffect(() => {
+    controllerRef.current.setRunning(isAutoPlaying, performance.now());
+    setAdaptiveStats(controllerRef.current.tick(performance.now()));
+    return () => controllerRef.current.setRunning(false, performance.now());
+  }, [isAutoPlaying, qrCodes]);
+
+  useEffect(() => {
+    if (isAutoPlaying) controllerRef.current.markShown(currentIndex, performance.now());
+  }, [isAutoPlaying, currentIndex, qrCodes]);
+
+  useEffect(() => {
+    if (!isAutoPlaying) return;
+    const timer = window.setInterval(() => {
+      // Also observes a stationary final missing code on repeated playback.
+      controllerRef.current.markShown(indexRef.current, performance.now());
+      setAdaptiveStats(controllerRef.current.tick(performance.now()));
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [isAutoPlaying]);
+
+  const effectivePlaybackSpeed = adaptiveEnabled ? adaptiveStats.interval : playbackSpeed;
+
+  useEffect(() => {
     if (!isAutoPlaying || !qrCodes.length) return;
     const intervalId = window.setInterval(() => {
       const next = advancePlayback(indexRef.current, queueRef.current,
@@ -127,9 +158,9 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
       indexRef.current = next.index;
       setCurrentIndex(next.index);
       if (next.complete) setIsAutoPlaying(false);
-    }, playbackSpeed);
+    }, effectivePlaybackSpeed);
     return () => window.clearInterval(intervalId);
-  }, [isAutoPlaying, playbackSpeed, qrCodes, feedbackEnabled]);
+  }, [isAutoPlaying, effectivePlaybackSpeed, qrCodes, feedbackEnabled]);
 
   const splitText = (text: string, size: number): string[] => {
     const chunks: string[] = [];
@@ -153,6 +184,9 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
         : text.trim() ? splitText(text, chunkSize) : [];
       transferId.current = crypto.randomUUID();
       const chunks = sourceChunks.map(chunk => `[QRBR1:${transferId.current}]${chunk}`);
+      controllerRef.current = new AdaptiveTransfer(sourceChunks.map(chunk => new TextEncoder().encode(parseTransferChunk(chunk).content).length));
+      controllerRef.current.setAdaptive(adaptiveEnabled, performance.now());
+      setAdaptiveStats(controllerRef.current.tick(performance.now()));
       feedbackRef.current = null;
       queueRef.current = chunks.map((_, i) => i);
       setFeedbackStatus("");
@@ -169,6 +203,8 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   };
 
   const clearAll = () => {
+    controllerRef.current = new AdaptiveTransfer([]);
+    setAdaptiveStats(controllerRef.current.tick(performance.now()));
     feedbackRef.current = null;
     setFeedbackStatus("");
     setIsAutoPlaying(false);
@@ -320,7 +356,11 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={feedbackEnabled} onChange={e => {
                   setFeedbackEnabled(e.target.checked);
-                  feedbackRef.current = null;
+                  if (!e.target.checked) {
+                    setAdaptiveEnabled(false);
+                    controllerRef.current.setAdaptive(false, performance.now());
+                    setAdaptiveStats(controllerRef.current.tick(performance.now()));
+                  }
                   queueRef.current = qrCodes.map((_, i) => i);
                   setFeedbackStatus("");
                 }} />
@@ -349,6 +389,23 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                 {isFullscreen ? <Minimize /> : <Maximize />}
                 {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
               </Button>
+            </div>
+            <div className="w-full shrink-0 space-y-1 text-center text-sm">
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={adaptiveEnabled} onChange={event => {
+                  const enabled = event.target.checked;
+                  setAdaptiveEnabled(enabled);
+                  if (enabled) setFeedbackEnabled(true);
+                  controllerRef.current.setAdaptive(enabled, performance.now());
+                  setAdaptiveStats(controllerRef.current.tick(performance.now()));
+                }} />
+                Adaptive speed (requires receiver clipboard feedback)
+              </label>
+              {feedbackEnabled && <p className="tabular-nums">
+                Acknowledged payload: {adaptiveStats.acknowledgedBytes.toLocaleString()} B · Effective throughput: {adaptiveStats.bytesPerSecond === null ? "—" : `${adaptiveStats.bytesPerSecond.toFixed(0)} B/s`}
+              </p>}
+              {adaptiveEnabled && <p role="status">{adaptiveStats.interval}ms/code · {adaptiveStats.reason}</p>}
+              {feedbackEnabled && <p className="text-xs text-muted-foreground">Unique payload bytes; excludes QR headers and retries. File payload includes encoding overhead. Average excludes playback pauses.</p>}
             </div>
             {fullscreenError && <p role="alert" className="text-sm text-destructive">{fullscreenError}</p>}
             <div className="flex w-full max-w-xl shrink-0 items-center justify-between gap-3">
@@ -396,8 +453,9 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                     Speed
                   </Label>
                   <select id="playback-speed" aria-label="Playback speed"
-                    value={playbackSpeed} onChange={event => setPlaybackSpeed(Number(event.target.value))}
+                    disabled={adaptiveEnabled} value={effectivePlaybackSpeed} onChange={event => setPlaybackSpeed(Number(event.target.value))}
                     className="h-9 rounded-md border bg-background px-3 text-sm text-foreground">
+                    {adaptiveEnabled && ![250, 500, 1000, 2000, 3000, 5000].includes(effectivePlaybackSpeed) && <option value={effectivePlaybackSpeed}>{effectivePlaybackSpeed / 1000} seconds</option>}
                     <option value={250}>0.25 seconds</option>
                     <option value={500}>0.5 seconds</option>
                     <option value={1000}>1 second</option>

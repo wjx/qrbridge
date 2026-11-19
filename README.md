@@ -113,3 +113,26 @@ Linux 环境中的验证不能替代 Windows 实机验收。
 两端需使用新版 QR Bridge，并能共享剪贴板（例如远程桌面的剪贴板同步）。桌面版支持后台剪贴板读写。浏览器受剪贴板权限、页面焦点和安全上下文限制；自动读写失败时，可在扫描端点击 **Copy Feedback** 或选中反馈文本复制，在显示端粘贴后点击 **Apply Feedback**。
 
 每次生成都会创建独立传输标识，其他传输和过期进度不会改变当前补播列表。新二维码包含 QRBR1 传输封装；新版仍可扫描旧二维码，但旧二维码不支持反馈补播。若要清空接收进度重新传输，请在显示端重新生成二维码。
+
+## 一键构建 Windows EXE（支持 Ubuntu）
+
+预先安装 Node.js 22.12+（推荐 24）和 pnpm，在项目目录运行：
+
+```bash
+pnpm desktop:exe
+```
+
+也可以从任意目录直接运行脚本：
+
+```bash
+node /home/j/src/qrbridge/scripts/build-exe.cjs
+```
+
+脚本自动安装锁定版本的依赖、构建最新桌面资源、打包 Windows x64 便携版。
+输出为 `release/QRBridge-Portable-<版本>-x64.exe`，失败时返回非零退出码。
+脚本不自动拉取代码；需要更新时先执行 `git pull --ff-only`。
+
+Ubuntu 无需 Wine，会跳过 EXE 图标和元数据编辑。此命令只生成便携版；
+安装版仍使用 `pnpm desktop:dist`，在 Ubuntu 上需要 Wine。
+脚本优先查找当前安装版本的 Electron 缓存，不存在时由打包工具下载；首次安装依赖及下载需要网络。
+可通过 `QRBRIDGE_ELECTRON_ZIP` 指定对应版本的 Windows x64 Electron ZIP 路径。

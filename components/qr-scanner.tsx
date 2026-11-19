@@ -9,11 +9,14 @@ import {
   useSession,
   type ScannedChunk,
 } from "@/components/session-provider";
-import { useScreenQRScanner } from "@/hooks/use-screen-qr-scanner";
+import { ScreenScanPreview } from "@/components/screen-scan-preview";
+import { useScreenQRScanner, type ScanRegion } from "@/hooks/use-screen-qr-scanner";
 import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
 
 export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   const [isScanning, setIsScanning] = useState(false);
+  const [scanRegion, setScanRegion] = useState<ScanRegion | null>(null);
+  const [selectingRegion, setSelectingRegion] = useState(true);
   const [error, setError] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
@@ -90,7 +93,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
     videoRef,
     startScreenScanning,
     stopScreenScanning,
-  } = useScreenQRScanner({ onDecode: handleScanSuccess, desktop });
+  } = useScreenQRScanner({ onDecode: handleScanSuccess, desktop, region: scanRegion, paused: selectingRegion });
 
   const startScanning = async () => {
     setError("");
@@ -139,6 +142,8 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
     if (isScanning) {
       await stopScanning();
     }
+    setScanRegion(null);
+    setSelectingRegion(true);
     await startScreenScanning();
   };
 
@@ -223,21 +228,14 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
             }`}
           />
 
-          <div className={`w-full max-w-md mx-auto ${isScreenScanning ? "" : "hidden"}`}>
-            <div className="relative overflow-hidden rounded-lg border bg-muted">
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video ref={videoRef} muted playsInline className="w-full" aria-label="Screen capture preview" />
-              <div className="absolute top-2 left-2 inline-flex items-center gap-1.5 rounded-full bg-background/80 px-2.5 py-1 text-xs font-medium backdrop-blur">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-                </span>
-                Scanning screen...
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground text-center mt-2 text-pretty">
-              QR codes visible on the captured screen are detected automatically. Page through multiple codes to collect them all.
-            </p>
+          <div className={`w-full max-w-2xl mx-auto ${isScreenScanning ? "" : "hidden"}`}>
+            <ScreenScanPreview
+              videoRef={videoRef}
+              selecting={selectingRegion}
+              region={scanRegion}
+              onSelect={(region) => { setScanRegion(region); setSelectingRegion(false); }}
+              onReselect={() => setSelectingRegion(true)}
+            />
           </div>
 
           {(error || screenError) && (

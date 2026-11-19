@@ -20,12 +20,22 @@ declare global {
 const SCAN_INTERVAL_MS = 400;
 const MAX_FRAME_DIMENSION = 1920;
 
+// Fractions of the captured video, independent of preview size.
+export interface ScanRegion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 interface UseScreenQRScannerOptions {
   onDecode: (text: string) => void;
   desktop?: boolean;
+  region?: ScanRegion | null;
+  paused?: boolean;
 }
 
-export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRScannerOptions) {
+export function useScreenQRScanner({ onDecode, desktop = false, region = null, paused = false }: UseScreenQRScannerOptions) {
   const [isScreenScanning, setIsScreenScanning] = useState(false);
   const [isScreenStarting, setIsScreenStarting] = useState(false);
   const [screenError, setScreenError] = useState<string>("");
@@ -36,6 +46,10 @@ export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRSca
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const detectorRef = useRef<BarcodeDetectorInstance | null>(null);
   const isStartingRef = useRef(false);
+  const busyRef = useRef(false);
+  const generationRef = useRef(0);
+  const scanOptionsRef = useRef({ region, paused });
+  scanOptionsRef.current = { region, paused };
   const onDecodeRef = useRef(onDecode);
   onDecodeRef.current = onDecode;
 
@@ -47,6 +61,7 @@ export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRSca
   }, []);
 
   const releaseScreenResources = useCallback(() => {
+    generationRef.current += 1;
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -70,6 +85,9 @@ export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRSca
   }, [releaseScreenResources]);
 
   const scanFrame = useCallback(async () => {
+    const options = scanOptionsRef.current;
+    if (options.paused || busyRef.current) return;
+    const generation = generationRef.current;
     const video = videoRef.current;
     if (!video || video.readyState < 2 || video.videoWidth === 0) return;
 
@@ -78,19 +96,27 @@ export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRSca
     }
     const canvas = canvasRef.current;
 
-    // Downscale very large frames (e.g. 4K screens) to keep decoding fast
-    const scale = Math.min(1, MAX_FRAME_DIMENSION / Math.max(video.videoWidth, video.videoHeight));
-    canvas.width = Math.floor(video.videoWidth * scale);
-    canvas.height = Math.floor(video.videoHeight * scale);
+    // Crop at source resolution BEFORE downscaling, retaining small QR details.
+    const crop = options.region ?? { x: 0, y: 0, width: 1, height: 1 };
+    const sx = crop.x * video.videoWidth;
+    const sy = crop.y * video.videoHeight;
+    const sw = crop.width * video.videoWidth;
+    const sh = crop.height * video.videoHeight;
+    const scale = Math.min(1, MAX_FRAME_DIMENSION / Math.max(sw, sh));
+    const width = Math.max(1, Math.floor(sw * scale));
+    const height = Math.max(1, Math.floor(sh * scale));
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
 
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
+    busyRef.current = true;
     try {
+      ctx.drawImage(video, sx, sy, sw, sh, 0, 0, width, height);
       if (detectorRef.current) {
         // Native BarcodeDetector: can find multiple QR codes in one frame
         const results = await detectorRef.current.detect(canvas);
+        if (generation !== generationRef.current || scanOptionsRef.current.paused || scanOptionsRef.current.region !== options.region) return;
         for (const result of results) {
           if (result.rawValue) onDecodeRef.current(result.rawValue);
         }
@@ -104,6 +130,8 @@ export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRSca
       }
     } catch {
       // Ignore per-frame decode errors and keep scanning
+    } finally {
+      busyRef.current = false;
     }
   }, []);
 

@@ -17,7 +17,9 @@ declare global {
   }
 }
 
-const SCAN_INTERVAL_MS = 400;
+// Up to 10 decode attempts/sec gives a 500ms QR several chances to be read.
+// busyRef prevents overlapping work when decoding takes longer than this.
+const SCAN_INTERVAL_MS = 100;
 const MAX_FRAME_DIMENSION = 1920;
 
 // Fractions of the captured video, independent of preview size.

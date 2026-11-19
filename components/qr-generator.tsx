@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { createFileChunks, MAX_FILE_BYTES } from "@/lib/file-transfer";
+import { createFileChunks } from "@/lib/file-transfer";
 import { advancePlayback, parseFeedback, readClipboard, type Feedback } from "@/lib/clipboard-feedback";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -206,10 +206,10 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
               setQrCodes([]);
               setCurrentIndex(0);
               setIsAutoPlaying(false);
-              setError(selected && selected.size > MAX_FILE_BYTES ? "File is too large. Maximum size is 100 KiB." : "");
-              setFile(selected && selected.size <= MAX_FILE_BYTES ? selected : null);
+              setError("");
+              setFile(selected);
             }} />
-            <p className="text-sm text-muted-foreground">Any file type, up to 100 KiB. Files stay on this device. Larger files require many QR codes; scan every code in QR Bridge to download the file.</p>
+            <p className="text-sm text-muted-foreground">Any file type, with no fixed file size limit. Files stay on this device. Larger files require many QR codes; scan every code in QR Bridge to download the file.</p>
             {file && <p className="text-sm">{file.name} · {file.size.toLocaleString()} bytes</p>}
           </div> : <div className="space-y-2">
             <Label htmlFor="text-input">Paste or enter your text content</Label>

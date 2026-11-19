@@ -9,7 +9,7 @@ const source = fs.readFileSync(require.resolve('../lib/file-transfer.ts'), 'utf8
 new Function('exports', 'module', ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText)(mod.exports, mod);
-const { createFileChunks, parseTransferChunk, restoreFile, assertCompatible, MAX_FILE_BYTES } = mod.exports;
+const { createFileChunks, parseTransferChunk, restoreFile, assertCompatible } = mod.exports;
 
 function file(bytes, name = '测试文件.bin', type = 'application/octet-stream') {
   const blob = new Blob([bytes], { type });
@@ -50,13 +50,19 @@ test('legacy chunked and plain text QR codes remain supported', () => {
   }
 });
 
-test('file size and chunk bounds are enforced, maximum file round-trips', async () => {
-  await assert.rejects(createFileChunks(file(new Uint8Array(MAX_FILE_BYTES + 1)), 500), /too large/);
-  await assert.rejects(createFileChunks(file('a'), 2000), /chunk size/);
-  const raw = await createFileChunks(file(new Uint8Array(MAX_FILE_BYTES)), 50);
-  assert.ok(raw.length <= 4096);
+test('files larger than 100 KiB and 4096 chunks round-trip', async () => {
+  const bytes = Uint8Array.from({ length: 256 * 1024 }, (_, i) => i % 256);
+  const raw = await createFileChunks(file(bytes), 50);
+  assert.ok(raw.length > 4096);
   const restored = await restoreFile(raw.map(parseTransferChunk));
-  assert.equal(restored.blob.size, MAX_FILE_BYTES);
+  assert.equal(restored.blob.size, bytes.length);
+  assert.deepEqual(new Uint8Array(await restored.blob.arrayBuffer()), bytes);
+});
+
+test('per-code chunk size bounds are still enforced', async () => {
+  for (const size of [49, 1001, 2000]) {
+    await assert.rejects(createFileChunks(file('a'), size), /chunk size/);
+  }
 });
 
 test('download filename cannot include directory separators', async () => {

@@ -1,5 +1,4 @@
-export const MAX_FILE_BYTES = 100 * 1024;
-const MAX_CHUNKS = 4096;
+const MAX_TEXT_CHUNKS = 4096;
 export interface TransferChunk {
   index: number;
   total: number;
@@ -23,7 +22,6 @@ async function digest(value: string): Promise<string> {
 }
 
 export async function createFileChunks(file: File, size: number): Promise<string[]> {
-  if (file.size > MAX_FILE_BYTES) throw new Error("File is too large. Maximum size is 100 KiB.");
   if (!Number.isInteger(size) || size < 50 || size > 1000) throw new Error("Choose a chunk size between 50 and 1000.");
   const payload = encode(new TextEncoder().encode(JSON.stringify({
     name: file.name, type: file.type, size: file.size,
@@ -31,7 +29,6 @@ export async function createFileChunks(file: File, size: number): Promise<string
   })));
   const id = await digest(payload);
   const total = Math.ceil(payload.length / size);
-  if (total > MAX_CHUNKS) throw new Error("Too many QR codes. Increase the chunk size.");
   return Array.from({ length: total }, (_, i) => `[QRBF1:${id}:${i + 1}/${total}]${payload.slice(i * size, (i + 1) * size)}`);
 }
 
@@ -46,7 +43,7 @@ export function parseTransferChunk(raw: string): TransferChunk {
   const text = !file && raw.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
   const index = Number(file ? file[2] : text ? text[1] : 1);
   const total = Number(file ? file[3] : text ? text[2] : 1);
-  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index < 1 || index > total || total > MAX_CHUNKS) {
+  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(total) || index < 1 || index > total || (!file && total > MAX_TEXT_CHUNKS)) {
     throw new Error("Invalid QR chunk number or count.");
   }
   const content = file ? file[4] : text ? text[3] : raw;
@@ -71,7 +68,7 @@ export async function restoreFile(chunks: TransferChunk[]): Promise<{ name: stri
   const payload = sorted.map(c => c.content).join("");
   if (await digest(payload) !== first.transferId) throw new Error("File verification failed. Clear Results and scan again.");
   const file = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decode(payload)));
-  if (typeof file.name !== "string" || !file.name || file.name.length > 1024 || typeof file.type !== "string" || typeof file.data !== "string" || !Number.isInteger(file.size) || file.size < 0 || file.size > MAX_FILE_BYTES) {
+  if (typeof file.name !== "string" || !file.name || file.name.length > 1024 || typeof file.type !== "string" || typeof file.data !== "string" || !Number.isSafeInteger(file.size) || file.size < 0) {
     throw new Error("Invalid file metadata.");
   }
   const bytes = decode(file.data);

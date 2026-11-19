@@ -8,14 +8,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "desktop:build": "vite build --config desktop/vite.config.mts && node scripts/prepare-desktop.cjs",
+    "desktop:build": "vite build --config desktop/vite.config.mts && pnpm desktop:service && node scripts/prepare-desktop.cjs",
     "desktop:start": "pnpm desktop:build && electron desktop-app",
     "desktop:dist": "pnpm desktop:build && electron-builder --config electron-builder.yml --win --x64 --publish never",
     "desktop:exe": "node scripts/build-exe.cjs",
-    "desktop:test": "node --test tests/desktop-main.test.cjs tests/trusted-page.test.cjs tests/clipboard-feedback.test.cjs tests/adaptive-transfer.test.cjs tests/transfer-progress.test.cjs tests/qr-mask-retry.test.cjs"
+    "desktop:test": "node --test tests/desktop-main.test.cjs tests/trusted-page.test.cjs tests/clipboard-feedback.test.cjs tests/adaptive-transfer.test.cjs tests/transfer-progress.test.cjs tests/qr-mask-retry.test.cjs tests/execution.test.cjs tests/execution-mcp.test.cjs",
+    "desktop:service": "esbuild desktop/execution/mcp.cjs --bundle --platform=node --format=cjs --outfile=desktop/mcp-bundle.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
     "@radix-ui/react-aspect-ratio": "1.1.8",
@@ -79,6 +81,7 @@
     "@vitejs/plugin-react": "^6.3.0",
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",

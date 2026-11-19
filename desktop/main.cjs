@@ -3,10 +3,24 @@ const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { isTrustedPage } = require('./trusted-page.cjs')
 
+const hasInstanceLock = app.requestSingleInstanceLock()
+if (!hasInstanceLock) app.quit()
+
 const rendererPath = path.join(__dirname, '../dist-desktop/index.html')
 let mainWindow
 let pendingCapture
 let captureOutcome = null
+let executionRuntime
+
+function getExecutionRuntime() {
+  if (!executionRuntime) executionRuntime = require('./execution/runtime.cjs').createRuntime(app.getPath('userData'), clipboard)
+  return executionRuntime
+}
+
+ipcMain.handle('execution:action', (event, action, value) => {
+  if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Untrusted execution access')
+  return getExecutionRuntime().action(action, value)
+})
 
 function isLocal(contents) {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && contents === mainWindow.webContents && isTrustedPage(contents.getURL(), rendererPath))
@@ -19,10 +33,12 @@ ipcMain.handle('capture:outcome', (event) => {
 
 ipcMain.handle('clipboard:read', (event) => {
   if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Untrusted clipboard access')
+  if (executionRuntime?.bridge.active) throw new Error('Clipboard is managed by execution mode')
   return clipboard.readText()
 })
 ipcMain.handle('clipboard:write', (event, text) => {
   if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Untrusted clipboard access')
+  if (executionRuntime?.bridge.active) throw new Error('Clipboard is managed by execution mode')
   if (typeof text !== 'string' || text.length > 100000) throw new Error('Invalid clipboard text')
   clipboard.writeText(text)
 })
@@ -62,11 +78,17 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'main-preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true },
   })
   lockNavigation(mainWindow)
+  mainWindow.on('close', (event) => {
+    if (executionRuntime?.bridge.active && executionRuntime.bridge.busy) {
+      event.preventDefault()
+      dialog.showErrorBox('Execution in progress', 'Keep this window open until the task result has been received and acknowledged.')
+    }
+  })
   mainWindow.on('closed', () => { finishCapture(); mainWindow = null })
   mainWindow.loadURL(pathToFileURL(rendererPath).href).catch((error) => dialog.showErrorBox('Unable to start QR Bridge', error.message))
 }
 
-app.whenReady().then(() => {
+if (hasInstanceLock) app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler((contents, permission) =>
     Boolean(isLocal(contents) && ['media', 'display-capture'].includes(permission)))
   session.defaultSession.setPermissionRequestHandler((contents, permission, callback, details) => {
@@ -96,3 +118,9 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (!mainWindow) createWindow() })
 })
 app.on('window-all-closed', () => app.quit())
+
+app.on('before-quit', () => { if (!executionRuntime?.bridge.busy) executionRuntime?.dispose() })
+
+app.on('second-instance', () => {
+  if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.focus() }
+})

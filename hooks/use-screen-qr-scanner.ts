@@ -12,7 +12,7 @@ interface BarcodeDetectorInstance {
 }
 declare global {
   interface Window {
-    qrDesktop?: { readClipboard: () => Promise<string>; writeClipboard: (text: string) => Promise<void>; captureOutcome: () => Promise<{ status: string; at: number } | null> };
+    qrDesktop?: { execution: (action: string, value?: unknown) => Promise<unknown>; readClipboard: () => Promise<string>; writeClipboard: (text: string) => Promise<void>; captureOutcome: () => Promise<{ status: string; at: number } | null> };
     BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
   }
 }

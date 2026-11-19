@@ -27,7 +27,7 @@ async function boot({ bracketPath = false } = {}) {
   let clipboardText = ''
   const electron = {
     clipboard: { readText: () => clipboardText, writeText: text => { clipboardText = text } },
-    app: { whenReady: async () => {}, on() {}, quit() {} }, BrowserWindow: Window,
+    app: { requestSingleInstanceLock: () => true, whenReady: async () => {}, on() {}, quit() {} }, BrowserWindow: Window,
     desktopCapturer: { getSources: async () => [source] },
     ipcMain: { handle: (name, fn) => { handlers[name] = fn }, on: (name, fn) => { handlers[name] = fn } },
     session: { defaultSession: {
@@ -139,4 +139,10 @@ test('clipboard bridge is restricted to trusted main frame and bounded text', as
   assert.throws(() => handlers['clipboard:write'](event, {}), /Invalid/)
   assert.throws(() => handlers['clipboard:write'](event, 'x'.repeat(100001)), /Invalid/)
   assert.equal(handlers['clipboard:read'](event), 'QRBR-ACK1:test')
+})
+
+test('execution IPC rejects untrusted pages and child frames before starting a runtime', async () => {
+  const { handlers, main } = await boot()
+  assert.throws(() => handlers['execution:action']({ sender: null, senderFrame: main.webContents.mainFrame }, 'start'), /Untrusted execution/)
+  assert.throws(() => handlers['execution:action']({ sender: main.webContents, senderFrame: {} }, 'configure', {}), /Untrusted execution/)
 })

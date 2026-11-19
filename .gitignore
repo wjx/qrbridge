@@ -21,3 +21,5 @@ node_modules
 dist-desktop/
 desktop-app/
 release/
+
+/desktop/mcp-bundle.cjs

@@ -45,3 +45,41 @@ test('instant completion avoids invalid rates and remaining times use readable u
   assert.equal(formatRemainingTime(125), '2m 5s');
   assert.equal(formatRemainingTime(3661), '1h 1m');
 });
+
+test('completion duration includes pauses, freezes, and resets for the next transfer', () => {
+  const progress = new TransferProgress();
+  assert.equal(progress.durationSeconds, null);
+  progress.update(1, 4, true, 1000);
+  progress.update(2, 4, false, 2000);
+  progress.update(2, 4, true, 6000);
+  progress.update(4, 4, true, 7000);
+  assert.equal(progress.durationSeconds, 6);
+  assert.equal(progress.update(4, 4, false, 12000).speed, 1.5);
+  assert.equal(progress.durationSeconds, 6);
+  progress.update(0, 0, false, 13000);
+  assert.equal(progress.durationSeconds, null);
+  progress.update(1, 2, true, 14000);
+  progress.update(2, 2, true, 14250);
+  assert.equal(progress.durationSeconds, 0.25);
+});
+
+test('preserved tracker excludes time away from Scan from effective speed', () => {
+  const progress = new TransferProgress();
+  progress.update(1, 3, true, 0);
+  progress.update(2, 3, true, 500);
+  progress.pause(1000);
+  progress.update(2, 3, true, 5000);
+  assert.equal(progress.update(3, 3, true, 5500).speed, 2 / 1.5);
+  assert.equal(progress.durationSeconds, 5.5);
+});
+
+
+test('unmount cleanup after clear does not restore old transfer statistics', () => {
+  const progress = new TransferProgress();
+  progress.update(1, 3, true, 0);
+  progress.update(0, 0, false, 1000);
+  progress.pause(1001);
+  assert.equal(progress.durationSeconds, null);
+  assert.equal(progress.update(1, 3, true, 2000).speed, null);
+  assert.equal(progress.durationSeconds, 0);
+});

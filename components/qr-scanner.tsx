@@ -281,7 +281,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
             }`}
           />
 
-          <div className={`w-full max-w-2xl mx-auto ${isScreenScanning ? "" : "hidden"}`}>
+          <div className={`w-full mx-auto ${isScreenScanning ? "" : "hidden"}`}>
             <ScreenScanPreview
               videoRef={videoRef}
               selecting={selectingRegion}

@@ -353,6 +353,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
+                        <SelectItem value="250">0.25 seconds</SelectItem>
                         <SelectItem value="500">0.5 seconds</SelectItem>
                         <SelectItem value="1000">1 second</SelectItem>
                         <SelectItem value="2000">2 seconds</SelectItem>

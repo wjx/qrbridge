@@ -1,5 +1,7 @@
 "use client"
 
+import { TransferProgress } from "@/lib/transfer-progress"
+
 import { createContext, useContext, useEffect, useState, useCallback } from "react"
 
 export interface ScannedChunk {
@@ -12,6 +14,7 @@ export interface ScannedChunk {
 }
 
 interface SessionContextValue {
+  transferProgress: TransferProgress
   activeCode: string | null
   setActiveCode: (code: string | null) => void
   saveToSession: (content: string) => Promise<{ ok: boolean; error?: string }>
@@ -29,6 +32,7 @@ const SessionContext = createContext<SessionContextValue | null>(null)
 const STORAGE_KEY = "qrbridge:activeCode"
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const [transferProgress] = useState(() => new TransferProgress())
   const [activeCode, setActiveCodeState] = useState<string | null>(null)
   const [scannedChunks, setScannedChunks] = useState<Map<number, ScannedChunk>>(
     new Map(),
@@ -76,14 +80,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   )
 
   const clearScannedData = useCallback(() => {
+    transferProgress.update(0, 0, false, performance.now())
     setScannedChunks(new Map())
     setTotalChunks(null)
     setLastScanned("")
-  }, [])
+  }, [transferProgress])
 
   return (
     <SessionContext.Provider
       value={{
+        transferProgress,
         activeCode,
         setActiveCode,
         saveToSession,

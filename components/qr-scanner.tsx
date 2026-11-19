@@ -25,6 +25,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const {
+    transferProgress,
     activeCode,
     saveToSession,
     scannedChunks,
@@ -81,6 +82,8 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
       }
       const next = new Map(current);
       next.set(parsed.index, parsed);
+      transferProgress.recordPayload(parsed.index, parsed.content, performance.now());
+      if (next.size === parsed.total) transferProgress.setDataActive(false, performance.now());
       chunksRef.current = next;
       setScannedChunks(next);
       setTotalChunks(parsed.total);
@@ -91,7 +94,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to parse QR code content");
     }
-  }, [setScannedChunks, setTotalChunks, setLastScanned]);
+  }, [setScannedChunks, setTotalChunks, setLastScanned, transferProgress]);
 
   const {
     isSupported: isScreenCaptureSupported,
@@ -197,6 +200,12 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   };
 
   const isComplete = totalChunks !== null && scannedChunks.size === totalChunks;
+  const hasChunks = scannedChunks.size > 0;
+  useEffect(() => {
+    transferProgress.setDataActive(!isComplete && (isScanning || (isScreenScanning && !selectingRegion)), performance.now());
+  }, [transferProgress, isComplete, isScanning, isScreenScanning, selectingRegion, hasChunks]);
+  useEffect(() => () => transferProgress.setDataActive(false, performance.now()), [transferProgress]);
+
 
   useEffect(() => {
     let cancelled = false;
@@ -350,7 +359,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
                   <Check className="w-4 h-4 text-green-600" />
                 )}
               </div>
-              {totalChunks > 1 && scannedChunks.size > 0 && (
+              {scannedChunks.size > 0 && (
                 <TransferStats
                   received={scannedChunks.size}
                   total={totalChunks}

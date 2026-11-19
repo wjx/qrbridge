@@ -12,7 +12,7 @@
     "desktop:start": "pnpm desktop:build && electron desktop-app",
     "desktop:dist": "pnpm desktop:build && electron-builder --config electron-builder.yml --win --x64 --publish never",
     "desktop:exe": "node scripts/build-exe.cjs",
-    "desktop:test": "node --test tests/desktop-main.test.cjs tests/trusted-page.test.cjs tests/clipboard-feedback.test.cjs tests/adaptive-transfer.test.cjs"
+    "desktop:test": "node --test tests/desktop-main.test.cjs tests/trusted-page.test.cjs tests/clipboard-feedback.test.cjs tests/adaptive-transfer.test.cjs tests/transfer-progress.test.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

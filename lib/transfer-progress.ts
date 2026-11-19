@@ -1,5 +1,42 @@
 /** Measures unique chunks received during active scanning, starting at the first chunk. */
 export class TransferProgress {
+  private payloadIndices = new Set<number>();
+  private payloadBytes = 0;
+  private arrivals: { at: number; bytes: number }[] = [];
+  private dataActive = false;
+  private dataTime: number | null = null;
+  private dataElapsed = 0;
+
+  private advanceDataClock(now: number) {
+    if (this.dataActive && this.dataTime !== null) this.dataElapsed += Math.max(0, now - this.dataTime);
+    this.dataTime = now;
+  }
+
+  setDataActive(active: boolean, now: number) {
+    this.advanceDataClock(now);
+    this.dataActive = active;
+    if (!active) this.arrivals = [];
+  }
+
+  recordPayload(index: number, content: string, now: number) {
+    if (this.payloadIndices.has(index)) return;
+    this.advanceDataClock(now);
+    this.payloadIndices.add(index);
+    const bytes = new TextEncoder().encode(content).length;
+    this.payloadBytes += bytes;
+    this.arrivals.push({ at: now, bytes });
+  }
+
+  dataRates(now: number) {
+    this.advanceDataClock(now);
+    this.arrivals = this.arrivals.filter(sample => sample.at > now - 3000);
+    return {
+      receivedBytes: this.payloadBytes,
+      realtime: this.dataActive ? this.arrivals.reduce((sum, sample) => sum + sample.bytes, 0) / 3 : 0,
+      average: this.dataElapsed > 0 ? this.payloadBytes / (this.dataElapsed / 1000) : null,
+    };
+  }
+
   private startedAt: number | null = null;
   private finishedAt: number | null = null;
 
@@ -21,6 +58,12 @@ export class TransferProgress {
 
   update(received: number, total: number, active: boolean, now: number) {
     if (received === 0) {
+      this.payloadIndices.clear();
+      this.payloadBytes = 0;
+      this.arrivals = [];
+      this.dataActive = false;
+      this.dataTime = null;
+      this.dataElapsed = 0;
       this.startedAt = null;
       this.finishedAt = null;
       this.baseline = null;
@@ -54,4 +97,10 @@ export function formatRemainingTime(seconds: number): string {
   if (rounded < 60) return `${rounded}s`;
   if (rounded < 3600) return `${Math.floor(rounded / 60)}m ${rounded % 60}s`;
   return `${Math.floor(rounded / 3600)}h ${Math.floor((rounded % 3600) / 60)}m`;
+}
+
+export function formatDataRate(bytesPerSecond: number): string {
+  return bytesPerSecond < 1024
+    ? `${bytesPerSecond.toFixed(0)} B/s`
+    : `${(bytesPerSecond / 1024).toFixed(2)} KiB/s`;
 }

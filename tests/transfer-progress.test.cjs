@@ -83,3 +83,45 @@ test('unmount cleanup after clear does not restore old transfer statistics', () 
   assert.equal(progress.update(1, 3, true, 2000).speed, null);
   assert.equal(progress.durationSeconds, 0);
 });
+
+test('live bytes count UTF-8 payload once and expire after three seconds', () => {
+  const progress = new TransferProgress();
+  progress.setDataActive(true, 0);
+  progress.recordPayload(2, '中文', 500); // 6 UTF-8 bytes, out of order
+  progress.recordPayload(1, 'abc', 1000);
+  progress.recordPayload(2, '中文', 1500); // duplicate must not refresh the sample
+  assert.deepEqual(progress.dataRates(1500), { receivedBytes: 9, realtime: 3, average: 6 });
+  assert.equal(progress.dataRates(3500).realtime, 1);
+  assert.equal(progress.dataRates(4000).realtime, 0);
+});
+
+test('byte averages exclude pauses and completion freezes the final average', () => {
+  const progress = new TransferProgress();
+  progress.setDataActive(true, 0);
+  progress.recordPayload(1, 'a'.repeat(1000), 1000);
+  progress.setDataActive(false, 2000);
+  assert.deepEqual(progress.dataRates(9000), { receivedBytes: 1000, realtime: 0, average: 500 });
+  progress.setDataActive(true, 10000);
+  assert.equal(progress.dataRates(10000).realtime, 0);
+  progress.recordPayload(2, 'b'.repeat(2000), 11000);
+  progress.setDataActive(false, 11000);
+  assert.deepEqual(progress.dataRates(50000), { receivedBytes: 3000, realtime: 0, average: 1000 });
+});
+
+test('clear resets samples and byte counts; a single instant chunk avoids infinity', () => {
+  const progress = new TransferProgress();
+  progress.setDataActive(true, 0);
+  progress.recordPayload(1, 'abc', 1000);
+  progress.update(0, 0, false, 2000);
+  assert.deepEqual(progress.dataRates(3000), { receivedBytes: 0, realtime: 0, average: null });
+  progress.recordPayload(1, 'new', 3000);
+  progress.setDataActive(false, 3000);
+  assert.deepEqual(progress.dataRates(4000), { receivedBytes: 3, realtime: 0, average: null });
+});
+
+test('data rates switch between bytes and binary kilobytes', () => {
+  assert.equal(mod.exports.formatDataRate(0), '0 B/s');
+  assert.equal(mod.exports.formatDataRate(600), '600 B/s');
+  assert.equal(mod.exports.formatDataRate(1024), '1.00 KiB/s');
+  assert.equal(mod.exports.formatDataRate(2560), '2.50 KiB/s');
+});

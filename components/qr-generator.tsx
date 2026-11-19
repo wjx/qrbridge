@@ -10,14 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
+  Maximize,
+  Minimize,
   Download,
   Copy,
   Trash2,
@@ -43,6 +37,46 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAutoPlaying, setIsAutoPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(2000);
+  const [qrSize, setQrSize] = useState(640);
+  const [fullscreenSize, setFullscreenSize] = useState(1536);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState("");
+  const playerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [availableSize, setAvailableSize] = useState(640);
+  const requestedSize = isFullscreen ? fullscreenSize : qrSize;
+  const displaySize = Math.max(1, Math.min(requestedSize, availableSize));
+  const hasCodes = qrCodes.length > 0;
+
+  useEffect(() => {
+    const sync = () => setIsFullscreen(document.fullscreenElement === playerRef.current);
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setAvailableSize(Math.floor(isFullscreen
+        ? Math.min(entry.contentRect.width, entry.contentRect.height)
+        : entry.contentRect.width));
+    });
+    observer.observe(stage);
+    return () => observer.disconnect();
+  }, [hasCodes, isFullscreen]);
+
+  const toggleFullscreen = async () => {
+    setFullscreenError("");
+    try {
+      if (document.fullscreenElement === playerRef.current) await document.exitFullscreen();
+      else if (playerRef.current?.requestFullscreen) await playerRef.current.requestFullscreen();
+      else setFullscreenError("Fullscreen is unavailable in this browser.");
+    } catch {
+      setFullscreenError("Unable to enter fullscreen. Try enlarging the app window instead.");
+    }
+  };
+
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
 
   const [feedbackEnabled, setFeedbackEnabled] = useState(false);
@@ -300,7 +334,24 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                 }}>Apply Feedback</Button>
               </>}
             </div>
-            <div className="flex w-full max-w-xl items-center justify-between gap-3">
+            <div ref={playerRef} className={isFullscreen
+              ? "flex h-dvh w-screen flex-col items-center gap-3 overflow-auto bg-background p-4 text-foreground"
+              : "flex w-full flex-col items-center gap-5"}>
+            <div className="flex w-full shrink-0 flex-wrap items-center justify-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                QR size
+                <input type="range" min={256} max={1536} step={32} value={requestedSize}
+                  onChange={event => (isFullscreen ? setFullscreenSize : setQrSize)(Number(event.target.value))}
+                  className="w-32 sm:w-48" />
+                <span className="w-16 tabular-nums">{displaySize}px</span>
+              </label>
+              <Button variant="outline" size="sm" onClick={toggleFullscreen}>
+                {isFullscreen ? <Minimize /> : <Maximize />}
+                {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+              </Button>
+            </div>
+            {fullscreenError && <p role="alert" className="text-sm text-destructive">{fullscreenError}</p>}
+            <div className="flex w-full max-w-xl shrink-0 items-center justify-between gap-3">
               <Button
                 variant="outline"
                 size="icon"
@@ -325,7 +376,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
             </div>
 
             {qrCodes.length > 1 && (
-              <div className="flex w-full max-w-xl flex-wrap items-center justify-center gap-3">
+              <div className="flex w-full max-w-xl shrink-0 flex-wrap items-center justify-center gap-3">
                 <Button
                   variant={isAutoPlaying ? "secondary" : "outline"}
                   size="sm"
@@ -344,47 +395,40 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                   <Label htmlFor="playback-speed" className="text-sm text-muted-foreground">
                     Speed
                   </Label>
-                  <Select
-                    value={String(playbackSpeed)}
-                    onValueChange={(value) => setPlaybackSpeed(Number(value))}
-                  >
-                    <SelectTrigger id="playback-speed" className="w-32" aria-label="Playback speed">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        <SelectItem value="250">0.25 seconds</SelectItem>
-                        <SelectItem value="500">0.5 seconds</SelectItem>
-                        <SelectItem value="1000">1 second</SelectItem>
-                        <SelectItem value="2000">2 seconds</SelectItem>
-                        <SelectItem value="3000">3 seconds</SelectItem>
-                        <SelectItem value="5000">5 seconds</SelectItem>
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <select id="playback-speed" aria-label="Playback speed"
+                    value={playbackSpeed} onChange={event => setPlaybackSpeed(Number(event.target.value))}
+                    className="h-9 rounded-md border bg-background px-3 text-sm text-foreground">
+                    <option value={250}>0.25 seconds</option>
+                    <option value={500}>0.5 seconds</option>
+                    <option value={1000}>1 second</option>
+                    <option value={2000}>2 seconds</option>
+                    <option value={3000}>3 seconds</option>
+                    <option value={5000}>5 seconds</option>
+                  </select>
                 </div>
               </div>
             )}
 
-            <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-xl border bg-qr-surface p-3 shadow-sm sm:p-6 md:max-w-xl lg:max-w-2xl">
+            <div ref={stageRef} className={isFullscreen
+              ? "flex min-h-0 w-full flex-1 items-center justify-center"
+              : "flex w-full items-center justify-center"}>
               <QRCodeSVG
                 ref={(el) => { qrRefs.current[currentIndex] = el; }}
                 value={qrCodes[currentIndex]}
-                size={640}
+                size={displaySize}
                 level="Q"
                 includeMargin
-                className="size-full max-w-md md:max-w-xl lg:max-w-2xl"
+                bgColor="#ffffff"
+                fgColor="#000000"
+                className="shrink-0"
                 aria-label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
               />
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => downloadQR(currentIndex)}
-              >
-                <Download data-icon="inline-start" />
-                Download QR
-              </Button>
             </div>
+            {!isFullscreen && <p className="text-center text-xs text-muted-foreground">Size fits the available space. Use fullscreen for larger codes; keep the entire white border visible.</p>}
+            </div>
+            <Button variant="outline" size="sm" onClick={() => downloadQR(currentIndex)}>
+              <Download data-icon="inline-start" />Download QR
+            </Button>
 
             {qrCodes.length > 1 && (
               <div className="flex max-w-full flex-wrap justify-center gap-2" aria-label="Choose a QR code">

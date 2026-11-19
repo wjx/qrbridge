@@ -116,7 +116,7 @@ Linux 环境中的验证不能替代 Windows 实机验收。
 
 ## 一键构建 Windows EXE（支持 Ubuntu）
 
-预先安装 Node.js 22.12+（推荐 24）和 pnpm，在项目目录运行：
+预先安装 Node.js 22.12+（推荐 24，包含 npm/npx），在项目目录运行：
 
 ```bash
 pnpm desktop:exe
@@ -128,7 +128,9 @@ pnpm desktop:exe
 node /home/j/src/qrbridge/scripts/build-exe.cjs
 ```
 
+脚本在安装依赖前校验 pnpm 版本；若本机版本不匹配，会通过 npx 使用项目指定的 pnpm 10.25.0，不修改全局 pnpm。首次获取该版本需要网络。
 脚本自动安装锁定版本的依赖、构建最新桌面资源、打包 Windows x64 便携版。
+若未安装 pnpm，或旧版 pnpm 拒绝启动项目，可直接运行 `node scripts/build-exe.cjs`。不要使用 `--force` 重写锁文件。
 输出为 `release/QRBridge-Portable-<版本>-x64.exe`，失败时返回非零退出码。
 脚本不自动拉取代码；需要更新时先执行 `git pull --ff-only`。
 

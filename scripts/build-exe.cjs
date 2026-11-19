@@ -28,13 +28,33 @@ function buildArgs(cachedElectron, platform = process.platform) {
   return args
 }
 
+// Resolve and verify the package manager before any install can touch node_modules.
+function selectPnpm(requiredVersion, probe, platform = process.platform) {
+  const pnpm = platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+  const current = probe(pnpm, ['--version'])
+  if (current.status === 0 && current.stdout?.trim() === requiredVersion) {
+    return { command: pnpm, prefix: [] }
+  }
+  const command = platform === 'win32' ? 'npx.cmd' : 'npx'
+  const prefix = ['--yes', `--package=pnpm@${requiredVersion}`, '--', 'pnpm']
+  const selected = probe(command, [...prefix, '--version'])
+  if (selected.error || selected.status !== 0 || selected.stdout?.trim() !== requiredVersion) {
+    throw new Error(`Cannot start pnpm ${requiredVersion}. Check npm/npx and network access. No dependencies were installed. ${selected.stderr?.trim() || selected.error?.message || ''}`)
+  }
+  return { command, prefix }
+}
+
 function main() {
-  const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
+  const requiredVersion = require('../package.json').packageManager.replace(/^pnpm@/, '')
+  const runner = selectPnpm(requiredVersion, (command, args) => spawnSync(command, args, {
+    cwd: root, encoding: 'utf8', shell: process.platform === 'win32',
+  }))
+  console.log(`Building with pnpm ${requiredVersion}`)
   function run(args) {
-    const result = spawnSync(pnpm, args, {
+    const result = spawnSync(runner.command, [...runner.prefix, ...args], {
       cwd: root, stdio: 'inherit', shell: process.platform === 'win32',
     })
-    if (result.error) throw new Error(`Unable to run pnpm: ${result.error.message}. Install Node.js and pnpm first.`)
+    if (result.error) throw new Error(`Unable to run pnpm: ${result.error.message}. Install Node.js and npm first.`)
     if (result.status !== 0) throw new Error(`pnpm ${args[0]} failed (${result.signal || result.status}).`)
   }
 
@@ -68,4 +88,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { findCachedElectron, buildArgs }
+module.exports = { findCachedElectron, buildArgs, selectPnpm }

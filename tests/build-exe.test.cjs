@@ -28,3 +28,37 @@ test('Linux portable build avoids Wine and preserves paths with spaces', () => {
   assert.ok(!buildArgs(null, 'win32').some(arg => arg.includes('signAndEditExecutable')))
   assert.ok(!buildArgs(null).some(arg => arg.includes('electronDist')))
 })
+
+const { selectPnpm } = require('../scripts/build-exe.cjs')
+test('old pnpm switches to verified project version before installation', () => {
+  const calls = []
+  const runner = selectPnpm('10.25.0', (command, args) => {
+    calls.push([command, args])
+    return { status: 0, stdout: command === 'pnpm' ? '8.15.4\n' : '10.25.0\n' }
+  }, 'linux')
+  assert.deepEqual(calls, [
+    ['pnpm', ['--version']],
+    ['npx', ['--yes', '--package=pnpm@10.25.0', '--', 'pnpm', '--version']],
+  ])
+  assert.equal(runner.command, 'npx')
+  assert.deepEqual(runner.prefix, ['--yes', '--package=pnpm@10.25.0', '--', 'pnpm'])
+})
+
+test('matching pnpm runs without bootstrap or network access', () => {
+  let count = 0
+  assert.deepEqual(selectPnpm('10.25.0', () => {
+    count++
+    return { status: 0, stdout: '10.25.0\n' }
+  }, 'linux'), { command: 'pnpm', prefix: [] })
+  assert.equal(count, 1)
+})
+
+test('missing pnpm can bootstrap, but failed or incorrect bootstrap aborts before install', () => {
+  const missing = { status: null, error: new Error('ENOENT') }
+  assert.equal(selectPnpm('10.25.0', command => command === 'pnpm' ? missing :
+    { status: 0, stdout: '10.25.0' }, 'linux').command, 'npx')
+  for (const failure of [missing, { status: 1, stderr: 'network unavailable' }, { status: 0, stdout: '8.15.4' }]) {
+    assert.throws(() => selectPnpm('10.25.0', command => command === 'pnpm' ? missing : failure, 'linux'),
+      /Cannot start pnpm 10.25.0/)
+  }
+})

@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useSession,
 } from "@/components/session-provider";
+import { TransferStats } from "@/components/transfer-stats";
 import { ScreenScanPreview } from "@/components/screen-scan-preview";
 import { useScreenQRScanner, type ScanRegion } from "@/hooks/use-screen-qr-scanner";
 import { Download, Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
@@ -304,6 +305,13 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
                   <Check className="w-4 h-4 text-green-600" />
                 )}
               </div>
+              {totalChunks > 1 && scannedChunks.size > 0 && (
+                <TransferStats
+                  received={scannedChunks.size}
+                  total={totalChunks}
+                  active={isScanning || (isScreenScanning && !selectingRegion)}
+                />
+              )}
               {!isComplete && getMissingChunks().length > 0 && (
                 <p className="text-sm text-muted-foreground mt-2">
                   Missing: #{getMissingChunks().join(", #")}

@@ -6,6 +6,7 @@ export interface ScannedChunk {
   index: number
   total: number
   content: string
+  transferId?: string
   raw: string
 }
 

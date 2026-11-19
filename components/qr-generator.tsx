@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createFileChunks, MAX_FILE_BYTES } from "@/lib/file-transfer";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +31,11 @@ interface QRGeneratorProps {
 }
 
 export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
+  const [inputMode, setInputMode] = useState<"text" | "file">("text");
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [chunkSize, setChunkSize] = useState(500);
   const [qrCodes, setQrCodes] = useState<string[]>([]);
@@ -63,18 +69,30 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     return chunks;
   };
 
-  const generateQRCodes = () => {
-    if (!text.trim()) return;
-    const chunks = splitText(text, chunkSize);
-    setIsAutoPlaying(false);
-    setQrCodes(chunks);
-    setCurrentIndex(0);
-    onGeneratedData?.(chunks);
+  const generateQRCodes = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const chunks = inputMode === "file"
+        ? file ? await createFileChunks(file, Math.min(chunkSize, 1000)) : []
+        : text.trim() ? splitText(text, chunkSize) : [];
+      setIsAutoPlaying(false);
+      setQrCodes(chunks);
+      setCurrentIndex(0);
+      onGeneratedData?.(chunks);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to read file.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const clearAll = () => {
     setIsAutoPlaying(false);
     setText("");
+    setFile(null);
+    setError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
     setQrCodes([]);
     setCurrentIndex(0);
   };
@@ -125,10 +143,26 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Input Text</CardTitle>
+          <CardTitle className="text-lg">Input Content</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
+          <div className="flex gap-2" aria-label="Input type">
+            <Button variant={inputMode === "text" ? "default" : "outline"} disabled={busy} onClick={() => { clearAll(); setInputMode("text"); }}>Text</Button>
+            <Button variant={inputMode === "file" ? "default" : "outline"} disabled={busy} onClick={() => { clearAll(); setChunkSize(size => Math.min(size, 1000)); setInputMode("file"); }}>File</Button>
+          </div>
+          {inputMode === "file" ? <div className="space-y-2">
+            <Label htmlFor="file-input">Choose a file</Label>
+            <Input id="file-input" ref={fileInputRef} type="file" disabled={busy} onChange={(event) => {
+              const selected = event.target.files?.[0] ?? null;
+              setQrCodes([]);
+              setCurrentIndex(0);
+              setIsAutoPlaying(false);
+              setError(selected && selected.size > MAX_FILE_BYTES ? "File is too large. Maximum size is 100 KiB." : "");
+              setFile(selected && selected.size <= MAX_FILE_BYTES ? selected : null);
+            }} />
+            <p className="text-sm text-muted-foreground">Any file type, up to 100 KiB. Files stay on this device. Larger files require many QR codes; scan every code in QR Bridge to download the file.</p>
+            {file && <p className="text-sm">{file.name} · {file.size.toLocaleString()} bytes</p>}
+          </div> : <div className="space-y-2">
             <Label htmlFor="text-input">Paste or enter your text content</Label>
             <Textarea
               id="text-input"
@@ -145,7 +179,8 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                 </span>
               )}
             </p>
-          </div>
+          </div>}
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
 
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
             <div className="space-y-2 w-full sm:w-auto">
@@ -154,9 +189,9 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                 id="chunk-size"
                 type="number"
                 min={50}
-                max={2000}
+                max={inputMode === "file" ? 1000 : 2000}
                 value={chunkSize}
-                onChange={(e) => setChunkSize(Math.max(50, parseInt(e.target.value) || 500))}
+                onChange={(e) => setChunkSize(Math.min(inputMode === "file" ? 1000 : 2000, Math.max(50, parseInt(e.target.value) || 500)))}
                 className="w-full sm:w-32"
               />
             </div>
@@ -166,14 +201,14 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button onClick={generateQRCodes} disabled={!text.trim()}>
-              Generate QR Codes
+            <Button onClick={generateQRCodes} disabled={busy || (inputMode === "file" ? !file : !text.trim())}>
+              {busy ? "Reading file..." : "Generate QR Codes"}
             </Button>
-            <Button variant="outline" onClick={copyToClipboard} disabled={!text.trim()}>
+            {inputMode === "text" && <Button variant="outline" onClick={copyToClipboard} disabled={!text.trim()}>
               <Copy className="w-4 h-4 mr-2" />
               Copy Text
-            </Button>
-            <Button variant="outline" onClick={clearAll} disabled={!text.trim() && qrCodes.length === 0}>
+            </Button>}
+            <Button variant="outline" onClick={clearAll} disabled={busy || (!file && !text.trim() && qrCodes.length === 0)}>
               <Trash2 className="w-4 h-4 mr-2" />
               Clear
             </Button>
@@ -187,7 +222,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
             <div className="flex flex-col gap-1">
               <CardTitle className="text-lg">Generated QR Codes</CardTitle>
               <p className="text-sm leading-relaxed text-muted-foreground">
-                Scan each code in order to retrieve the full text.
+                Scan every code in QR Bridge to retrieve the full {inputMode === "file" ? "file" : "text"}.
               </p>
             </div>
             {qrCodes.length > 1 && (

@@ -13,7 +13,7 @@ createRoot(document.getElementById('root')!).render(
       <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
         <header className="text-center">
           <h1 className="text-3xl font-bold">QR Bridge</h1>
-          <p className="mt-2 text-muted-foreground">Generate and scan QR codes offline with automatic text chunking. Content stays on this device.</p>
+          <p className="mt-2 text-muted-foreground">Generate and scan QR codes offline with automatic text and file chunking. Content stays on this device.</p>
         </header>
         <Tabs defaultValue="scan" className="gap-6">
           <TabsList className="mx-auto" aria-label="QR code mode">

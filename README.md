@@ -37,7 +37,7 @@ To learn more, take a look at the following resources:
 ## Windows 桌面版
 
 桌面版使用 Electron，本地打包 Generate 和 Scan 界面，无需浏览器、Node 服务或 Redis 即可使用。
-Generate 支持输入文本、自动分片生成二维码、翻页和自动播放，可离线使用。
+Generate 支持输入文本或选择文件、自动分片生成二维码、翻页和自动播放，可离线使用。
 支持屏幕／窗口缩略图选择、摄像头扫码、分片自动合并、缺失分片提示、复制结果和收集完成后自动停止捕获。
 扫码内容仅保存在内存中，关闭程序后清除；桌面版不提供云端 Session。
 
@@ -69,6 +69,12 @@ pnpm desktop:dist
 ### 使用
 
 默认打开 **Scan**；点击顶部 **Generate** 可生成二维码：输入文本、设置每片字符数，然后点击 **Generate QR Codes**。
+传输文件时，选择 **File**，点击 **Choose a file** 选择文件，再点击 **Generate QR Codes**。
+网页和桌面版均支持任意类型文件（包括空文件），单文件上限 100 KiB；文件只在本地读取，不上传服务器。
+接收端需使用更新后的 QR Bridge **Scan** 扫完全部二维码，校验通过后点击 **Download File**，按原文件名保存原始二进制内容。
+支持乱序和重复扫描；缺片时不能下载，混入另一文件或文本的二维码会提示先清除结果。完整性校验失败需清除后重新扫描。
+文件结果不保存到云端 Session。文件越大，二维码越多；默认每片 500 字符时，100 KiB 文件约需 365 片，建议优先传小文件。
+
 多片二维码可手动翻页，或点击 **Auto Play** 并设置播放速度，供另一台设备扫描。
 播放速度支持 0.5、1、2、3、5 秒，默认仍为 2 秒。屏幕扫描每 100ms 尝试识别一次（最多约 10 次/秒），上一次识别未结束时跳过本次，避免任务堆积。
 清晰画面可尝试 0.5 秒档位；如果漏片较多，可框选二维码区域或调慢播放速度。实际吞吐量取决于设备解码耗时和识别率。
@@ -90,6 +96,7 @@ pnpm desktop:dist
 - `scripts/prepare-desktop.cjs`：仅将桌面运行所需文件复制到 `desktop-app/`，不包含云端配置或 Next.js 服务。
 - `electron-builder.yml`：Windows x64 NSIS 安装包配置。
 - `pnpm exec tsc --noEmit`：类型检查；`pnpm desktop:build`：离线界面构建。
+- `node --test tests/file-transfer.test.cjs`：文件往返、乱序、空文件、损坏与混片、大小限制及文本兼容测试。
 - `pnpm desktop:test`：捕获授权、取消、重复请求、关闭窗口释放与导航限制测试。
 
 Windows 实机验收应覆盖：双屏选择、窗口选择、取消选择后重新捕获、手动停止、分片合并与自动停止、

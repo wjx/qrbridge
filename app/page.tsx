@@ -22,7 +22,7 @@ export default function Home() {
             QR Bridge
           </h1>
           <p className="text-muted-foreground">
-            Generate and scan QR codes with automatic text chunking
+            Generate and scan QR codes with automatic text and file chunking
           </p>
         </div>
 

@@ -1,17 +1,17 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { parseTransferChunk, assertCompatible, restoreFile } from "@/lib/file-transfer";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   useSession,
-  type ScannedChunk,
 } from "@/components/session-provider";
 import { ScreenScanPreview } from "@/components/screen-scan-preview";
 import { useScreenQRScanner, type ScanRegion } from "@/hooks/use-screen-qr-scanner";
-import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
+import { Download, Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
 
 export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   const [isScanning, setIsScanning] = useState(false);
@@ -29,61 +29,39 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
     setScannedChunks,
     totalChunks,
     setTotalChunks,
-    lastScanned,
     setLastScanned,
     clearScannedData,
   } = useSession();
 
-  const parseQRData = (data: string): ScannedChunk | null => {
-    // Parse format: [chunk_index/total_chunks]content
-    const match = data.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
-    if (match) {
-      return {
-        index: parseInt(match[1]),
-        total: parseInt(match[2]),
-        content: match[3],
-        raw: data,
-      };
-    }
-    // If no format detected, treat as single chunk
-    return {
-      index: 1,
-      total: 1,
-      content: data,
-      raw: data,
-    };
-  };
+  const chunksRef = useRef(scannedChunks);
+  chunksRef.current = scannedChunks;
+  const [receivedFile, setReceivedFile] = useState<{ name: string; blob: Blob } | null>(null);
+  const [fileError, setFileError] = useState("");
+  const isFile = Boolean(scannedChunks.values().next().value?.transferId);
 
   const handleScanSuccess = useCallback((decodedText: string) => {
-    // Prevent duplicate scans of the same content
-    if (decodedText === lastScanned) return;
-    setLastScanned(decodedText);
-
-    const parsed = parseQRData(decodedText);
-    if (!parsed) {
-      setError("Unable to parse QR code content");
-      return;
-    }
-
-    // Haptic feedback on a successful new scan (Android browsers; iOS Safari has no support)
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate(80);
-    }
-
-    setScannedChunks((prev) => {
-      const newMap = new Map(prev);
-      if (!newMap.has(parsed.index)) {
-        newMap.set(parsed.index, parsed);
+    try {
+      const parsed = parseTransferChunk(decodedText);
+      const current = chunksRef.current;
+      assertCompatible(current.values().next().value, parsed);
+      const previous = current.get(parsed.index);
+      if (previous) {
+        if (previous.raw !== parsed.raw) throw new Error("Conflicting QR chunk. Clear Results before scanning another transfer.");
+        return;
       }
-      return newMap;
-    });
-
-    if (totalChunks === null) {
+      const next = new Map(current);
+      next.set(parsed.index, parsed);
+      chunksRef.current = next;
+      setScannedChunks(next);
       setTotalChunks(parsed.total);
+      setLastScanned(decodedText);
+      setSaveState("idle");
+      setError("");
+      if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(80);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to parse QR code content");
     }
-
-    setError("");
-  }, [lastScanned, totalChunks]);
+  }, [setScannedChunks, setTotalChunks, setLastScanned]);
 
   const {
     isSupported: isScreenCaptureSupported,
@@ -148,7 +126,10 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   };
 
   const handleClearScannedData = () => {
+    chunksRef.current = new Map();
     clearScannedData();
+    setReceivedFile(null);
+    setFileError("");
     setError("");
     setSaveState("idle");
   };
@@ -186,6 +167,32 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   };
 
   const isComplete = totalChunks !== null && scannedChunks.size === totalChunks;
+
+  useEffect(() => {
+    let cancelled = false;
+    setReceivedFile(null);
+    setFileError("");
+    if (isFile && isComplete) {
+      restoreFile(Array.from(scannedChunks.values())).then(file => {
+        if (!cancelled) setReceivedFile(file);
+      }).catch(err => {
+        if (!cancelled) setFileError(err instanceof Error ? err.message : "Unable to restore file.");
+      });
+    }
+    return () => { cancelled = true; };
+  }, [scannedChunks, isFile, isComplete]);
+
+  const downloadFile = () => {
+    if (!receivedFile) return;
+    const url = URL.createObjectURL(receivedFile.blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = receivedFile.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
 
   // Auto-stop screen capture once every chunk has been collected
   useEffect(() => {
@@ -319,7 +326,9 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
               )}
             </CardTitle>
             <div className="flex flex-wrap gap-2">
-              <Button
+              {isFile ? <Button size="sm" onClick={downloadFile} disabled={!receivedFile}>
+                <Download className="w-4 h-4 mr-2" />Download File
+              </Button> : <Button
                 variant="outline"
                 size="sm"
                 className="flex-1 sm:flex-none"
@@ -336,8 +345,8 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
                     Copy Text
                   </>
                 )}
-              </Button>
-              {!desktop && <Button
+              </Button>}
+              {!desktop && !isFile && <Button
                 size="sm"
                 className="flex-1 sm:flex-none"
                 onClick={handleSaveToSession}
@@ -362,7 +371,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
                 )}
               </Button>}
             </div>
-            {!desktop && !activeCode && getFullText() && (
+            {!desktop && !isFile && !activeCode && getFullText() && (
               <p className="w-full text-sm text-muted-foreground sm:text-right">
                 Create or join a session first to save your scan.
               </p>
@@ -391,7 +400,12 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
                 )}
               </div>
 
-              <div className="p-4 bg-muted rounded-lg">
+              {isFile ? <div className="p-4 bg-muted rounded-lg space-y-2" aria-live="polite">
+                {fileError ? <p role="alert" className="text-destructive">{fileError}</p> : receivedFile ? <>
+                  <p className="font-medium break-all">{receivedFile.name}</p>
+                  <p className="text-sm">{receivedFile.blob.size.toLocaleString()} bytes · File verified. Ready to download.</p>
+                </> : <p>{isComplete ? "Verifying file..." : "Receiving file. Scan all QR codes to enable download."}</p>}
+              </div> : <><div className="p-4 bg-muted rounded-lg">
                 <pre className="whitespace-pre-wrap break-all text-sm font-mono">
                   {getFullText() || "Waiting for scan..."}
                 </pre>
@@ -399,7 +413,7 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
 
               <p className="text-sm text-muted-foreground">
                 Scanned text length: {getFullText().length} characters
-              </p>
+              </p></>}
             </div>
           </CardContent>
         </Card>

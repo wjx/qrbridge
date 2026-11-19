@@ -13,6 +13,10 @@ __v0_jsx-dev-runtime.ts
 node_modules
 .next/
 .DS_Store
+
+# TypeScript incremental build cache
+/*.tsbuildinfo
+
 # Desktop build output
 dist-desktop/
 desktop-app/

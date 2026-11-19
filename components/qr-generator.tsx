@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import { AdaptiveTransfer } from "@/lib/adaptive-transfer";
 import { createFileChunks, parseTransferChunk } from "@/lib/file-transfer";
 import { advancePlayback, parseFeedback, readClipboard, type Feedback } from "@/lib/clipboard-feedback";
-import { QRCodeSVG } from "qrcode.react";
+import { MaskedQRCode } from "@/components/masked-qr-code";
+import { QRMaskRetry } from "@/lib/qr-mask-retry";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -78,6 +79,8 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     }
   };
 
+  const maskRetryRef = useRef(new QRMaskRetry());
+  const [, setMaskRevision] = useState(0);
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
 
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false);
@@ -151,15 +154,22 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
 
   useEffect(() => {
     if (!isAutoPlaying || !qrCodes.length) return;
+    const display = (index: number) => {
+      maskRetryRef.current.start(index, performance.now(), effectivePlaybackSpeed,
+        feedbackEnabled ? feedbackRef.current?.missing ?? null : null);
+      setMaskRevision(revision => revision + 1);
+    };
+    display(indexRef.current);
     const intervalId = window.setInterval(() => {
       const next = advancePlayback(indexRef.current, queueRef.current,
         feedbackEnabled ? feedbackRef.current?.missing ?? null : null);
+      if (!next.complete) display(next.index);
       queueRef.current = next.queue;
       indexRef.current = next.index;
       setCurrentIndex(next.index);
       if (next.complete) setIsAutoPlaying(false);
     }, effectivePlaybackSpeed);
-    return () => window.clearInterval(intervalId);
+    return () => { window.clearInterval(intervalId); maskRetryRef.current.pause(); };
   }, [isAutoPlaying, effectivePlaybackSpeed, qrCodes, feedbackEnabled]);
 
   const splitText = (text: string, size: number): string[] => {
@@ -187,6 +197,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
       controllerRef.current = new AdaptiveTransfer(sourceChunks.map(chunk => new TextEncoder().encode(parseTransferChunk(chunk).content).length));
       controllerRef.current.setAdaptive(adaptiveEnabled, performance.now());
       setAdaptiveStats(controllerRef.current.tick(performance.now()));
+      maskRetryRef.current = new QRMaskRetry();
       feedbackRef.current = null;
       queueRef.current = chunks.map((_, i) => i);
       setFeedbackStatus("");
@@ -203,6 +214,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   };
 
   const clearAll = () => {
+    maskRetryRef.current = new QRMaskRetry();
     controllerRef.current = new AdaptiveTransfer([]);
     setAdaptiveStats(controllerRef.current.tick(performance.now()));
     feedbackRef.current = null;
@@ -470,16 +482,12 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
             <div ref={stageRef} className={isFullscreen
               ? "flex min-h-0 w-full flex-1 items-center justify-center"
               : "flex w-full items-center justify-center"}>
-              <QRCodeSVG
+              <MaskedQRCode
                 ref={(el) => { qrRefs.current[currentIndex] = el; }}
                 value={qrCodes[currentIndex]}
                 size={displaySize}
-                level="Q"
-                includeMargin
-                bgColor="#ffffff"
-                fgColor="#000000"
-                className="shrink-0"
-                aria-label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
+                variant={maskRetryRef.current.variant(currentIndex)}
+                label={`QR code ${currentIndex + 1} of ${qrCodes.length}`}
               />
             </div>
             {!isFullscreen && <p className="text-center text-xs text-muted-foreground">Size fits the available space. Use fullscreen for larger codes; keep the entire white border visible.</p>}

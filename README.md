@@ -36,7 +36,8 @@ To learn more, take a look at the following resources:
 
 ## Windows 桌面版
 
-桌面版使用 Electron，本地打包 Scan 界面，无需浏览器、Node 服务或 Redis 即可使用。
+桌面版使用 Electron，本地打包 Generate 和 Scan 界面，无需浏览器、Node 服务或 Redis 即可使用。
+Generate 支持输入文本、自动分片生成二维码、翻页和自动播放，可离线使用。
 支持屏幕／窗口缩略图选择、摄像头扫码、分片自动合并、缺失分片提示、复制结果和收集完成后自动停止捕获。
 扫码内容仅保存在内存中，关闭程序后清除；桌面版不提供云端 Session。
 
@@ -67,6 +68,10 @@ pnpm desktop:dist
 
 ### 使用
 
+默认打开 **Scan**；点击顶部 **Generate** 可生成二维码：输入文本、设置每片字符数，然后点击 **Generate QR Codes**。
+多片二维码可手动翻页，或点击 **Auto Play** 并设置播放速度，供另一台设备扫描。
+切换回 **Scan** 会清空生成页面的输入和二维码；切换到 **Generate** 会停止当前扫描，已收集的扫描结果仍保留到关闭程序或手动清除。
+
 1. 打开 QR Bridge，点击 **Capture Screen**。
 2. 在缩略图列表中选择包含二维码的屏幕或窗口；关闭选择器或点击 Cancel 可取消。
 3. 让二维码完整可见，依次展示各分片。收集完整后自动停止捕获，点击 **Copy Text** 复制合并内容。
@@ -83,4 +88,5 @@ pnpm desktop:dist
 - `pnpm desktop:test`：捕获授权、取消、重复请求、关闭窗口释放与导航限制测试。
 
 Windows 实机验收应覆盖：双屏选择、窗口选择、取消选择后重新捕获、手动停止、分片合并与自动停止、
-复制文本、关闭程序后捕获释放，以及断网启动。Linux 环境中的验证不能替代 Windows 实机验收。
+复制文本、关闭程序后捕获释放、断网启动和生成二维码、分片翻页与自动播放，以及 Generate / Scan 切换。
+Linux 环境中的验证不能替代 Windows 实机验收。

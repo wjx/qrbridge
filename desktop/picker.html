@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data:">
+<title>Choose a screen or window</title>
+<style>
+body { font: 15px system-ui; margin: 24px; color: #18181b; background: #fafafa; }
+#sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+button { cursor: pointer; padding: 12px; border: 1px solid #d4d4d8; border-radius: 8px; background: white; font: inherit; }
+button:hover, button:focus-visible { outline: 2px solid #2563eb; }
+img { display: block; width: 100%; height: 130px; object-fit: contain; background: #eee; margin-bottom: 8px; }
+span { display: block; overflow-wrap: anywhere; } header { display: flex; align-items: center; justify-content: space-between; }
+</style>
+</head>
+<body>
+<header><h2>Choose a screen or window</h2><button id="cancel">Cancel</button></header>
+<p>Only the source you select will be scanned.</p>
+<p id="status" role="status">Loading sources…</p><div id="sources"></div>
+<script src="./picker.js"></script>
+</body>
+</html>

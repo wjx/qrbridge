@@ -1,0 +1,25 @@
+appId: com.qrbridge.desktop
+productName: QR Bridge
+directories:
+  app: desktop-app
+  output: release
+files:
+  - desktop/**
+  - dist-desktop/**
+  - package.json
+  - "!node_modules/**/*"
+asar: true
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+portable:
+  artifactName: QRBridge-Portable-${version}-${arch}.${ext}
+nsis:
+  artifactName: QRBridge-Setup-${version}-${arch}.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true

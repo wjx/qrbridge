@@ -12,7 +12,7 @@ import {
 import { useScreenQRScanner } from "@/hooks/use-screen-qr-scanner";
 import { Camera, StopCircle, Trash2, Copy, Check, RefreshCw, Share2, Loader2, Monitor, MonitorX } from "lucide-react";
 
-export function QRScanner() {
+export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string>("");
   const [copied, setCopied] = useState(false);
@@ -33,7 +33,7 @@ export function QRScanner() {
 
   const parseQRData = (data: string): ScannedChunk | null => {
     // Parse format: [chunk_index/total_chunks]content
-    const match = data.match(/^\[(\d+)\/(\d+)\](.*)$/s);
+    const match = data.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
     if (match) {
       return {
         index: parseInt(match[1]),
@@ -90,7 +90,7 @@ export function QRScanner() {
     videoRef,
     startScreenScanning,
     stopScreenScanning,
-  } = useScreenQRScanner({ onDecode: handleScanSuccess });
+  } = useScreenQRScanner({ onDecode: handleScanSuccess, desktop });
 
   const startScanning = async () => {
     setError("");
@@ -248,7 +248,7 @@ export function QRScanner() {
 
           <div className="flex flex-wrap gap-2 justify-center">
             {!isScanning ? (
-              <Button onClick={startScanning}>
+              <Button onClick={startScanning} disabled={isScreenStarting}>
                 <Camera className="w-4 h-4 mr-2" />
                 Start Scanning
               </Button>
@@ -339,7 +339,7 @@ export function QRScanner() {
                   </>
                 )}
               </Button>
-              <Button
+              {!desktop && <Button
                 size="sm"
                 className="flex-1 sm:flex-none"
                 onClick={handleSaveToSession}
@@ -362,9 +362,9 @@ export function QRScanner() {
                     Save to session
                   </>
                 )}
-              </Button>
+              </Button>}
             </div>
-            {!activeCode && getFullText() && (
+            {!desktop && !activeCode && getFullText() && (
               <p className="w-full text-sm text-muted-foreground sm:text-right">
                 Create or join a session first to save your scan.
               </p>

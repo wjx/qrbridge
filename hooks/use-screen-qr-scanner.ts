@@ -12,6 +12,7 @@ interface BarcodeDetectorInstance {
 }
 declare global {
   interface Window {
+    qrDesktop?: { captureOutcome: () => Promise<{ status: string; at: number } | null> };
     BarcodeDetector?: new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
   }
 }
@@ -21,9 +22,10 @@ const MAX_FRAME_DIMENSION = 1920;
 
 interface UseScreenQRScannerOptions {
   onDecode: (text: string) => void;
+  desktop?: boolean;
 }
 
-export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
+export function useScreenQRScanner({ onDecode, desktop = false }: UseScreenQRScannerOptions) {
   const [isScreenScanning, setIsScreenScanning] = useState(false);
   const [isScreenStarting, setIsScreenStarting] = useState(false);
   const [screenError, setScreenError] = useState<string>("");
@@ -123,6 +125,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
     setIsScreenScanning(false);
 
     let stream: MediaStream | null = null;
+    const startedAt = Date.now();
 
     try {
       try {
@@ -132,7 +135,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
         });
       } catch (initialError) {
         const errorName = initialError instanceof DOMException ? initialError.name : "";
-        const shouldRetry = ["NotReadableError", "AbortError", "OverconstrainedError"].includes(errorName);
+        const shouldRetry = !desktop && ["NotReadableError", "AbortError", "OverconstrainedError"].includes(errorName);
 
         if (!shouldRetry) throw initialError;
 
@@ -180,7 +183,14 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
       const errorName = err instanceof DOMException ? err.name : "UnknownError";
       const errorMessage = err instanceof Error ? err.message : String(err);
 
-      // Closing the picker or denying permission is an intentional user action.
+      // Only a confirmed picker cancellation is silent on desktop. Permission
+      // rejection before the picker opens must remain visible for diagnosis.
+      if (desktop) {
+        const outcome = await window.qrDesktop?.captureOutcome().catch(() => null);
+        if (outcome?.status === "cancelled" && outcome.at >= startedAt) return false;
+        setScreenError(`Screen capture failed (${errorName}): ${errorMessage}. If no selection window appeared, please report this message.`);
+        return false;
+      }
       if (errorName === "NotAllowedError") return false;
 
       console.error("Screen capture error:", { name: errorName, message: errorMessage });
@@ -201,7 +211,7 @@ export function useScreenQRScanner({ onDecode }: UseScreenQRScannerOptions) {
       isStartingRef.current = false;
       setIsScreenStarting(false);
     }
-  }, [isSupported, releaseScreenResources, scanFrame, stopScreenScanning]);
+  }, [desktop, isSupported, releaseScreenResources, scanFrame, stopScreenScanning]);
 
   useEffect(() => {
     return () => {

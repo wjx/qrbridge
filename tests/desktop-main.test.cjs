@@ -24,7 +24,9 @@ async function boot({ bracketPath = false } = {}) {
     close() { this.emit('close'); this.destroyed = true; this.emit('closed') }
   }
   const source = { id: 'screen:1:0', name: 'Display 1', thumbnail: { toDataURL: () => 'data:image/png;base64,test' } }
+  let clipboardText = ''
   const electron = {
+    clipboard: { readText: () => clipboardText, writeText: text => { clipboardText = text } },
     app: { whenReady: async () => {}, on() {}, quit() {} }, BrowserWindow: Window,
     desktopCapturer: { getSources: async () => [source] },
     ipcMain: { handle: (name, fn) => { handlers[name] = fn }, on: (name, fn) => { handlers[name] = fn } },
@@ -123,4 +125,18 @@ test('cancellation outcome is visible only to the trusted main frame', async () 
   const outcome = handlers['capture:outcome']({ sender: main.webContents, senderFrame: main.webContents.mainFrame })
   assert.equal(outcome.status, 'cancelled')
   assert.equal(typeof outcome.at, 'number')
+})
+
+test('clipboard bridge is restricted to trusted main frame and bounded text', async () => {
+  const { handlers, main } = await boot()
+  const event = { sender: main.webContents, senderFrame: main.webContents.mainFrame }
+  handlers['clipboard:write'](event, 'QRBR-ACK1:test')
+  assert.equal(handlers['clipboard:read'](event), 'QRBR-ACK1:test')
+  for (const invalid of [{ ...event, senderFrame: {} }, { ...event, sender: null }]) {
+    assert.throws(() => handlers['clipboard:read'](invalid), /Untrusted/)
+    assert.throws(() => handlers['clipboard:write'](invalid, 'text'), /Untrusted/)
+  }
+  assert.throws(() => handlers['clipboard:write'](event, {}), /Invalid/)
+  assert.throws(() => handlers['clipboard:write'](event, 'x'.repeat(100001)), /Invalid/)
+  assert.equal(handlers['clipboard:read'](event), 'QRBR-ACK1:test')
 })

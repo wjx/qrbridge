@@ -1,4 +1,4 @@
-const { app, BrowserWindow, desktopCapturer, ipcMain, session, dialog } = require('electron')
+const { app, BrowserWindow, desktopCapturer, ipcMain, session, dialog, clipboard } = require('electron')
 const path = require('node:path')
 const { pathToFileURL } = require('node:url')
 const { isTrustedPage } = require('./trusted-page.cjs')
@@ -15,6 +15,16 @@ function isLocal(contents) {
 ipcMain.handle('capture:outcome', (event) => {
   if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) return null
   return captureOutcome
+})
+
+ipcMain.handle('clipboard:read', (event) => {
+  if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Untrusted clipboard access')
+  return clipboard.readText()
+})
+ipcMain.handle('clipboard:write', (event, text) => {
+  if (!isLocal(event.sender) || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('Untrusted clipboard access')
+  if (typeof text !== 'string' || text.length > 100000) throw new Error('Invalid clipboard text')
+  clipboard.writeText(text)
 })
 
 function lockNavigation(window) {

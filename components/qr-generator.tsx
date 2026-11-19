@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { createFileChunks, MAX_FILE_BYTES } from "@/lib/file-transfer";
+import { advancePlayback, parseFeedback, readClipboard, type Feedback } from "@/lib/clipboard-feedback";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,17 +45,57 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   const [playbackSpeed, setPlaybackSpeed] = useState(2000);
   const qrRefs = useRef<(SVGSVGElement | null)[]>([]);
 
+  const [feedbackEnabled, setFeedbackEnabled] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const [feedbackInput, setFeedbackInput] = useState("");
+  const transferId = useRef("");
+  const feedbackRef = useRef<Feedback | null>(null);
+  const queueRef = useRef<number[]>([]);
+  const indexRef = useRef(currentIndex);
+  indexRef.current = currentIndex;
+
+  const applyFeedback = (raw: string) => {
+    const feedback = parseFeedback(raw, transferId.current, qrCodes.length);
+    if (!feedback || feedback.revision < (feedbackRef.current?.revision ?? 0)) return false;
+    feedbackRef.current = feedback;
+    setFeedbackStatus(feedback.missing.length
+      ? `Receiver needs ${feedback.missing.length} codes. Applied next round.`
+      : "Receiver has collected every code.");
+    if (!feedback.missing.length) setIsAutoPlaying(false);
+    return true;
+  };
+
   useEffect(() => {
-    if (!isAutoPlaying || qrCodes.length < 2) return;
+    if (!feedbackEnabled || !qrCodes.length) return;
+    let cancelled = false;
+    let pending = false;
+    const poll = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        const raw = await readClipboard();
+        if (!cancelled) applyFeedback(raw);
+      } catch {
+        if (!cancelled) setFeedbackStatus("Clipboard unavailable. Allow clipboard access or paste the feedback below.");
+      } finally { pending = false; }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 500);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [feedbackEnabled, qrCodes]);
 
+  useEffect(() => {
+    if (!isAutoPlaying || !qrCodes.length) return;
     const intervalId = window.setInterval(() => {
-      setCurrentIndex((previousIndex) =>
-        previousIndex === qrCodes.length - 1 ? 0 : previousIndex + 1,
-      );
+      const next = advancePlayback(indexRef.current, queueRef.current,
+        feedbackEnabled ? feedbackRef.current?.missing ?? null : null);
+      queueRef.current = next.queue;
+      indexRef.current = next.index;
+      setCurrentIndex(next.index);
+      if (next.complete) setIsAutoPlaying(false);
     }, playbackSpeed);
-
     return () => window.clearInterval(intervalId);
-  }, [isAutoPlaying, playbackSpeed, qrCodes.length]);
+  }, [isAutoPlaying, playbackSpeed, qrCodes, feedbackEnabled]);
 
   const splitText = (text: string, size: number): string[] => {
     const chunks: string[] = [];
@@ -73,9 +114,15 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
     setBusy(true);
     setError("");
     try {
-      const chunks = inputMode === "file"
+      const sourceChunks = inputMode === "file"
         ? file ? await createFileChunks(file, Math.min(chunkSize, 1000)) : []
         : text.trim() ? splitText(text, chunkSize) : [];
+      transferId.current = crypto.randomUUID();
+      const chunks = sourceChunks.map(chunk => `[QRBR1:${transferId.current}]${chunk}`);
+      feedbackRef.current = null;
+      queueRef.current = chunks.map((_, i) => i);
+      setFeedbackStatus("");
+      setFeedbackInput("");
       setIsAutoPlaying(false);
       setQrCodes(chunks);
       setCurrentIndex(0);
@@ -88,6 +135,8 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
   };
 
   const clearAll = () => {
+    feedbackRef.current = null;
+    setFeedbackStatus("");
     setIsAutoPlaying(false);
     setText("");
     setFile(null);
@@ -233,6 +282,24 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
             )}
           </CardHeader>
           <CardContent className="flex flex-col items-center gap-5 p-4 sm:p-6 lg:p-8">
+            <div className="w-full space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={feedbackEnabled} onChange={e => {
+                  setFeedbackEnabled(e.target.checked);
+                  feedbackRef.current = null;
+                  queueRef.current = qrCodes.map((_, i) => i);
+                  setFeedbackStatus("");
+                }} />
+                Use clipboard feedback to replay missing codes
+              </label>
+              {feedbackEnabled && <>
+                <p className="text-sm text-muted-foreground" role="status">{feedbackStatus || "Waiting for scanner feedback."}</p>
+                <Input aria-label="Receiver feedback" placeholder="Paste receiver feedback if clipboard access is blocked" value={feedbackInput} onChange={e => setFeedbackInput(e.target.value)} />
+                <Button variant="outline" size="sm" onClick={() => {
+                  if (!applyFeedback(feedbackInput)) setFeedbackStatus("Invalid feedback or feedback belongs to another transfer.");
+                }}>Apply Feedback</Button>
+              </>}
+            </div>
             <div className="flex w-full max-w-xl items-center justify-between gap-3">
               <Button
                 variant="outline"
@@ -262,6 +329,7 @@ export function QRGenerator({ onGeneratedData }: QRGeneratorProps) {
                 <Button
                   variant={isAutoPlaying ? "secondary" : "outline"}
                   size="sm"
+                  disabled={feedbackEnabled && feedbackRef.current?.missing.length === 0}
                   onClick={() => setIsAutoPlaying((playing) => !playing)}
                   aria-pressed={isAutoPlaying}
                 >

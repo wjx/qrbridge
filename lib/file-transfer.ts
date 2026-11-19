@@ -6,6 +6,7 @@ export interface TransferChunk {
   content: string;
   raw: string;
   transferId?: string;
+  feedbackId?: string;
 }
 
 function encode(bytes: Uint8Array): string {
@@ -35,6 +36,11 @@ export async function createFileChunks(file: File, size: number): Promise<string
 }
 
 export function parseTransferChunk(raw: string): TransferChunk {
+  if (raw.startsWith("[QRBR1:")) {
+    const envelope = raw.match(/^\[QRBR1:([a-f0-9-]{36})\]([\s\S]*)$/);
+    if (!envelope || envelope[2].startsWith("[QRBR1:")) throw new Error("Invalid transfer envelope.");
+    return { ...parseTransferChunk(envelope[2]), raw, feedbackId: envelope[1] };
+  }
   const file = raw.match(/^\[QRBF1:([a-f0-9]{64}):(\d+)\/(\d+)\]([A-Za-z0-9+/=]+)$/);
   if (raw.startsWith("[QRBF1:") && !file) throw new Error("Invalid file QR code.");
   const text = !file && raw.match(/^\[(\d+)\/(\d+)\]([\s\S]*)$/);
@@ -49,7 +55,7 @@ export function parseTransferChunk(raw: string): TransferChunk {
 }
 
 export function assertCompatible(existing: TransferChunk | undefined, incoming: TransferChunk): void {
-  if (existing && (existing.transferId !== incoming.transferId || existing.total !== incoming.total)) {
+  if (existing && (existing.feedbackId !== incoming.feedbackId || existing.transferId !== incoming.transferId || existing.total !== incoming.total)) {
     throw new Error("This QR code belongs to another transfer. Clear Results before scanning it.");
   }
 }

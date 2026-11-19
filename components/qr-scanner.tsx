@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { parseTransferChunk, assertCompatible, restoreFile } from "@/lib/file-transfer";
+import { createFeedback, writeClipboard } from "@/lib/clipboard-feedback";
 import { Html5Qrcode } from "html5-qrcode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,6 +39,34 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
   chunksRef.current = scannedChunks;
   const [receivedFile, setReceivedFile] = useState<{ name: string; blob: Blob } | null>(null);
   const [fileError, setFileError] = useState("");
+  const [feedbackEnabled, setFeedbackEnabled] = useState(false);
+  const [feedbackStatus, setFeedbackStatus] = useState("");
+  const feedbackText = createFeedback(scannedChunks);
+  const feedbackTextRef = useRef(feedbackText);
+  feedbackTextRef.current = feedbackText;
+
+  useEffect(() => {
+    if (!feedbackEnabled) return;
+    let cancelled = false;
+    let pending = false;
+    let lastWritten: string | null = null;
+    const publish = async () => {
+      const value = feedbackTextRef.current;
+      if (!value || value === lastWritten || pending) return;
+      pending = true;
+      try {
+        await writeClipboard(value);
+        lastWritten = value;
+        if (!cancelled) setFeedbackStatus("Scan progress sent through clipboard.");
+      } catch {
+        if (!cancelled) setFeedbackStatus("Clipboard unavailable. Copy the feedback below manually.");
+      } finally { pending = false; }
+    };
+    void publish();
+    const timer = window.setInterval(publish, 300);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [feedbackEnabled]);
+
   const isFile = Boolean(scannedChunks.values().next().value?.transferId);
 
   const handleScanSuccess = useCallback((decodedText: string) => {
@@ -228,6 +257,22 @@ export function QRScanner({ desktop = false }: { desktop?: boolean }) {
           <CardTitle className="text-lg">Scan QR Codes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={feedbackEnabled} onChange={e => setFeedbackEnabled(e.target.checked)} />
+              Send scan progress through clipboard (overwrites clipboard)
+            </label>
+            {feedbackEnabled && <>
+              <p className="text-sm text-muted-foreground" role="status">{feedbackStatus || "Waiting for a QR Bridge transfer."}</p>
+              {feedbackText && <>
+                <Button size="sm" variant="outline" onClick={async () => {
+                  try { await writeClipboard(feedbackText); setFeedbackStatus("Feedback copied."); }
+                  catch { setFeedbackStatus("Select and copy the feedback below manually."); }
+                }}>Copy Feedback</Button>
+                <textarea aria-label="Scan feedback" className="w-full rounded border p-2 text-xs" readOnly value={feedbackText} />
+              </>}
+            </>}
+          </div>
           <div
             id="qr-reader"
             ref={containerRef}

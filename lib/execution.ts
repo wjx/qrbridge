@@ -7,6 +7,7 @@ export interface ExecutionJob {
 }
 export interface ExecutionSnapshot {
   active: boolean; busy: boolean; config: ExecutionConfig; error: string; targets: string[]; jobs: ExecutionJob[];
+  peerVerified: boolean; pairingScanned: boolean; pairingCode: string | null;
   transfer: { id: string; chunks: string[]; missing: number[] | null } | null;
   receiving: { received: number; total: number } | null;
 }

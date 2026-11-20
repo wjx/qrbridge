@@ -3,18 +3,22 @@ const path = require('node:path')
 const { randomBytes, randomUUID } = require('node:crypto')
 const { sign, verify, sessionId, encodeQR, parseQR, validateRequest, terminal } = require('./protocol.cjs')
 const { runSSH } = require('./ssh.cjs')
+const PAIRING_PREFIX = 'QREX-PAIR1:'
+const PAIRING_CODE = /^QREX-PAIR1:([a-f0-9]{64}):([a-f0-9-]{36})$/
 
 class ExecutionBridge {
   constructor(directory, { execute = runSSH, now = Date.now } = {}) {
     this.file = path.join(directory, 'execution.json')
     this.execute = execute; this.now = now; this.active = false; this.error = ''
     this.config = { role: 'receiver', key: randomBytes(32).toString('hex'), targets: [], port: 3210, token: randomBytes(32).toString('hex') }
+    this.paired = false
     this.jobs = new Map()
     if (fs.existsSync(this.file)) {
       const stored = JSON.parse(fs.readFileSync(this.file, 'utf8'))
       if (stored.version !== 1 || !Array.isArray(stored.jobs)) throw new Error('Invalid execution journal; refusing to execute')
       this.config = this.validateConfig(stored.config)
       this.jobs = new Map(stored.jobs.map(job => [job.storageId, job]))
+      this.paired = stored.paired ?? (this.localJobs.length > 0)
       for (const job of this.jobs.values()) {
         if (job.role === 'sender' && !terminal(job.state)) {
           job.state = 'unknown'; job.error = 'Sender restarted; execution outcome is unknown. Do not automatically retry.'
@@ -35,16 +39,29 @@ class ExecutionBridge {
   }
   configure(config) {
     if (this.active) throw new Error('Leave execution mode before changing settings')
-    this.config = this.validateConfig({ ...this.config, ...config }); this.save(); return this.snapshot()
+    const next = this.validateConfig({ ...this.config, ...config })
+    const paired = config.key !== undefined || (next.role === this.config.role && this.paired)
+    this.savePairing(next, paired)
+    return this.snapshot()
+  }
+  savePairing(config, paired) {
+    const previous = this.config, wasPaired = this.paired
+    this.config = config
+    this.paired = paired
+    try { this.save() }
+    catch (error) { this.config = previous; this.paired = wasPaired; throw error }
   }
   save() {
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     const temp = this.file + '.tmp'
     const fd = fs.openSync(temp, 'w', 0o600)
-    try { fs.writeFileSync(fd, JSON.stringify({ version: 1, config: this.config, jobs: [...this.jobs.values()] })); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
+    try { fs.writeFileSync(fd, JSON.stringify({ version: 1, config: this.config, paired: this.paired, jobs: [...this.jobs.values()] })); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
     fs.renameSync(temp, this.file)
   }
-  resetTransport() { this.outbox = []; this.transfer = null; this.incoming = null; this.ack = null; this.targets = []; this.receiverEpoch = randomUUID(); this.lastReceiverEpoch = null; this.lastWrite = 0 }
+  resetTransport() {
+    this.pairingNonce = null; this.peerVerified = false
+    this.outbox = []; this.transfer = null; this.incoming = null; this.ack = null; this.targets = []; this.receiverEpoch = randomUUID(); this.lastReceiverEpoch = null; this.lastWrite = 0
+  }
   get sid() { return sessionId(this.config.key) }
   get localJobs() { return [...this.jobs.values()].filter(j => j.sessionId === this.sid && j.role === this.config.role) }
   get pending() { return this.localJobs.find(j => !terminal(j.state)) }
@@ -53,6 +70,7 @@ class ExecutionBridge {
     if (this.active) return
     this.resetTransport(); this.error = ''; this.active = true
     if (this.config.role === 'sender') {
+      if (!this.paired) this.pairingNonce = randomUUID()
       this.enqueue({ type: 'hello', targets: this.config.targets })
       for (const job of this.localJobs.filter(j => !j.delivered)) this.publish(job)
     }
@@ -68,6 +86,9 @@ class ExecutionBridge {
   }
   snapshot() {
     return { active: this.active, busy: this.busy, config: this.config, error: this.error,
+      peerVerified: this.peerVerified, pairingScanned: this.config.role === 'receiver' && Boolean(this.pairingNonce),
+      pairingCode: this.active && this.config.role === 'sender' && this.pairingNonce
+        ? PAIRING_PREFIX + this.config.key + ':' + this.pairingNonce : null,
       targets: this.config.role === 'sender' ? this.config.targets : this.targets,
       jobs: this.localJobs.slice(-30).reverse().map(j => this.publicJob(j)),
       transfer: this.transfer ? { id: this.transfer.id, chunks: this.transfer.chunks, missing: this.transfer.missing } : null,
@@ -115,6 +136,14 @@ class ExecutionBridge {
         const message = verify(clipboard.readText(), this.config.key, 'request')
         if (!message || !Number.isSafeInteger(message.at) || Math.abs(this.now() - message.at) > 120000) return
         if (typeof message.receiverEpoch !== 'string' || !/^[a-f0-9-]{36}$/.test(message.receiverEpoch)) return
+        if (this.pairingNonce) {
+          if (message.pairingNonce !== this.pairingNonce) return
+          this.savePairing(this.config, true)
+          this.pairingNonce = null
+          this.peerVerified = true
+          return
+        }
+        this.peerVerified = true
         if (this.lastReceiverEpoch && this.lastReceiverEpoch !== message.receiverEpoch && this.transfer) {
           // A restarted receiver has lost its partial chunk buffer. Start a new
           // transfer ID so playback includes every chunk, not just old missing ones.
@@ -134,7 +163,7 @@ class ExecutionBridge {
         // Querying the same ID also recovers cached results after QR/clipboard loss.
         const latest = this.localJobs.at(-1)
         const request = latest && (!terminal(latest.state) || latest.state === 'unknown') ? validateRequest(latest) : null
-        const text = sign({ sessionId: this.sid, at: this.now(), receiverEpoch: this.receiverEpoch, helloRequested: !this.targets.length, request, ack: this.ack }, this.config.key, 'request')
+        const text = sign({ sessionId: this.sid, at: this.now(), receiverEpoch: this.receiverEpoch, pairingNonce: this.pairingNonce ?? undefined, helloRequested: !this.targets.length, request, ack: this.ack }, this.config.key, 'request')
         if (this.now() - this.lastWrite >= 750) { clipboard.writeText(text); this.lastWrite = this.now() }
       }
     } catch (error) { this.error = error.message }
@@ -186,6 +215,19 @@ class ExecutionBridge {
   }
   receiveQR(raw) {
     if (!this.active || this.config.role !== 'receiver') return
+    if (typeof raw === 'string' && raw.startsWith(PAIRING_PREFIX)) {
+      const offer = PAIRING_CODE.exec(raw)
+      if (!offer || offer[0] !== raw || this.peerVerified) return
+      const [, key, nonce] = offer
+      if (key !== this.config.key) {
+        if (this.paired || this.pairingNonce || this.busy) return
+        this.savePairing({ ...this.config, key }, false)
+      }
+      this.pairingNonce = nonce
+      this.incoming = null
+      this.ack = null
+      return
+    }
     const chunk = parseQR(raw)
     if (!chunk) return
     if (this.ack?.id === chunk.id && this.ack.missing.length === 0) return
@@ -201,6 +243,9 @@ class ExecutionBridge {
       const message = verify(text, this.config.key, 'result')
       if (!message) { this.incoming = null; this.ack = null; throw new Error('Result authentication failed. Check the pairing key on both devices.') }
       if (message.type === 'hello' && Array.isArray(message.targets) && message.targets.length <= 32 && message.targets.every(t => typeof t === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(t))) {
+        if (!this.paired) this.savePairing(this.config, true)
+        this.pairingNonce = null
+        this.peerVerified = true
         this.targets = message.targets
       } else if (message.type === 'job') {
         const result = message.job

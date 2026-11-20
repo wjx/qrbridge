@@ -12,7 +12,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 
-function ResultPlayer({ transfer }: { transfer: NonNullable<ExecutionSnapshot['transfer']> }) {
+function ResultPlayer({ transfer, pairing = false }: {
+  transfer: NonNullable<ExecutionSnapshot['transfer']>;
+  pairing?: boolean;
+}) {
   const latest = useRef(transfer); latest.current = transfer;
   const [display, setDisplay] = useState({ index: 0, variant: 0, interval: 500 });
   const [size, setSize] = useState(512);
@@ -40,16 +43,17 @@ function ResultPlayer({ transfer }: { transfer: NonNullable<ExecutionSnapshot['t
     tick();
     return () => clearTimeout(timer);
   }, [transfer.id]); // Each transfer owns its playback controller.
+  const index = Math.min(display.index, transfer.chunks.length - 1);
   return <div ref={player} className="space-y-3 overflow-auto rounded-xl border bg-background p-4 text-center text-foreground">
     <Button variant="outline" size="sm" onClick={() => {
       const action = document.fullscreenElement ? document.exitFullscreen() : player.current?.requestFullscreen();
       void action?.catch(() => setFullscreenError('无法进入全屏，请滚动页面以显示完整二维码。'));
     }}>切换全屏</Button>
     {fullscreenError && <p role="alert">{fullscreenError}</p>}
-    <p>结果二维码 {display.index + 1} / {transfer.chunks.length} · {display.interval}ms / 张</p>
-    <label className="flex justify-center gap-3">尺寸<input aria-label="执行结果二维码尺寸" type="range" min={256} max={768} step={32} value={size} onChange={e => setSize(Number(e.target.value))} /></label>
-    <div className="flex justify-center overflow-auto"><MaskedQRCode value={transfer.chunks[display.index]} size={size} variant={display.variant} label="执行状态或结果二维码" /></div>
-    <p className="text-sm text-muted-foreground">自动播放、缺片补播及调速已开启。接收端确认后自动展示下一份结果。</p>
+    <p>{pairing ? '配对二维码' : `结果二维码 ${index + 1} / ${transfer.chunks.length} · ${display.interval}ms / 张`}</p>
+    <label className="flex justify-center gap-3">尺寸<input aria-label="执行二维码尺寸" type="range" min={256} max={768} step={32} value={size} onChange={e => setSize(Number(e.target.value))} /></label>
+    <div className="flex justify-center overflow-auto"><MaskedQRCode value={transfer.chunks[index]} size={size} variant={display.variant} label={pairing ? "执行模式配对二维码" : "执行状态或结果二维码"} /></div>
+    <p className="text-sm text-muted-foreground">{pairing ? '请在接收端选择此屏幕或窗口，并保持扫描。仅向接收端展示此二维码。' : '自动播放、缺片补播及调速已开启。接收端确认后自动展示下一份结果。'}</p>
   </div>;
 }
 
@@ -67,9 +71,9 @@ export function ExecutionPanel({ onActiveChange }: { onActiveChange: (active: bo
   const scanPending = useRef(false);
   const lastScan = useRef('');
   const scanner = useScreenQRScanner({ desktop: true, region, paused: selecting, onDecode: raw => {
-    if (!raw.startsWith('[QREX1:') || scanPending.current || lastScan.current === raw) return;
+    if ((!raw.startsWith('[QREX1:') && !raw.startsWith('QREX-PAIR1:')) || scanPending.current || lastScan.current === raw) return;
     scanPending.current = true;
-    void execution('scan', raw).then(() => { lastScan.current = raw; }).catch(e => setError(e.message)).finally(() => { scanPending.current = false; });
+    void execution('scan', raw).then(() => { lastScan.current = raw; setError(''); }).catch(e => setError(e.message)).finally(() => { scanPending.current = false; });
   } });
   useEffect(() => {
     let cancelled = false, pending = false;
@@ -100,7 +104,7 @@ export function ExecutionPanel({ onActiveChange }: { onActiveChange: (active: bo
         const result = await execution('stop');
         scanner.stopScreenScanning(); lastScan.current = ''; setSnapshot(result); onActiveChange(false);
       } else {
-        await execution('configure', { ...config, targets: targetsText.split(/[\s,]+/).filter(Boolean) });
+        await execution('configure', { role: config.role, port: config.port, targets: targetsText.split(/[\s,]+/).filter(Boolean) });
         const result = await execution('start'); setSnapshot(result); onActiveChange(true);
       }
     } catch (e) {
@@ -116,13 +120,15 @@ export function ExecutionPanel({ onActiveChange }: { onActiveChange: (active: bo
       <details open={!active}><summary className="cursor-pointer font-medium">连接设置</summary>
       <fieldset disabled={active || changing} className="space-y-3 disabled:opacity-70">
         <label className="block space-y-1"><span>本机角色</span><select className="block w-full rounded border bg-background p-2" value={config.role} onChange={e => setConfig({ ...config, role: e.target.value as ExecutionConfig['role'] })}><option value="receiver">接收端：MCP 网关与扫码</option><option value="sender">发送端：SSH 执行与结果展示</option></select></label>
-        <label className="block space-y-1"><span>配对密钥（两端填写同一份 64 位十六进制值）</span><Input aria-label="配对密钥" type="password" value={config.key} onChange={e => setConfig({ ...config, key: e.target.value.trim() })} /></label>
-        <details><summary className="cursor-pointer text-sm">显示本机配对密钥</summary><code className="block break-all py-2 select-all">{config.key}</code></details>
         {receiver ? <label className="block space-y-1"><span>本机 MCP 端口</span><Input aria-label="MCP 端口" type="number" min={1024} max={65535} value={config.port} onChange={e => setConfig({ ...config, port: Number(e.target.value) })} /></label> : <label className="block space-y-1"><span>允许执行的 SSH Host 别名（每行一个）</span><Textarea aria-label="SSH 目标" placeholder="dev-server" value={targetsText} onChange={e => setTargetsText(e.target.value)} /><span className="text-sm text-muted-foreground">使用发送端 ~/.ssh/config；需预先配置密钥登录及 known_hosts。别名只使用字母、数字、下划线和连字符。</span></label>}
       </fieldset>
       </details>
       <Button disabled={changing} onClick={() => void changeMode()}>{changing ? '正在切换…' : active ? '退出执行模式' : '启用执行模式'}</Button>
-      <p role="status" className="text-sm">{active ? receiver ? 'MCP 已启动，等待扫码接收发送端信息。' : '已启用 SSH 执行，正在监听剪贴板。' : '尚未启用，命令不会执行。'}</p>
+      <p role="status" className="text-sm">{active
+        ? snapshot.peerVerified ? '已配对' : receiver
+          ? snapshot.pairingScanned ? '已扫描配对码，等待验证发送端握手。' : '等待扫描发送端二维码。'
+          : '等待接收端确认配对。'
+        : '尚未启用，命令不会执行。'}</p>
       {(error || snapshot.error) && <p role="alert" className="whitespace-pre-wrap text-destructive">{error || snapshot.error}</p>}
     </div>
     {active && receiver && <>
@@ -135,7 +141,7 @@ export function ExecutionPanel({ onActiveChange }: { onActiveChange: (active: bo
         }}>{scanner.isScreenScanning ? '停止扫描' : '选择屏幕 / 窗口'}</Button>
         {scanner.screenError && <p role="alert" className="text-destructive">{scanner.screenError}</p>}
         <div className={scanner.isScreenScanning ? '' : 'hidden'}><ScreenScanPreview videoRef={scanner.videoRef} selecting={selecting} region={region} onSelect={r => { setRegion(r); setSelecting(false); }} onReselect={() => setSelecting(true)} /></div>
-        <p className="text-sm">{snapshot.receiving ? `当前消息：${snapshot.receiving.received} / ${snapshot.receiving.total} 片` : '请先扫描发送端握手二维码，获取可用目标。'}</p>
+        <p className="text-sm">{snapshot.receiving ? `当前消息：${snapshot.receiving.received} / ${snapshot.receiving.total} 片` : snapshot.peerVerified ? '等待下一份执行结果。' : '保持扫描发送端二维码，直至显示已配对。'}</p>
       </div>
       <form className="space-y-3 rounded-xl border p-4" onSubmit={e => {
         e.preventDefault(); setError('');
@@ -147,7 +153,11 @@ export function ExecutionPanel({ onActiveChange }: { onActiveChange: (active: bo
         <Button disabled={snapshot.busy || !snapshot.targets.length || !command.trim()}>提交命令</Button>
       </form>
     </>}
-    {active && !receiver && (snapshot.transfer ? <ResultPlayer key={snapshot.transfer.id} transfer={snapshot.transfer} /> : <p className="rounded-xl border p-5">等待下一条命令。收到任务后将自动展示状态和结果二维码。</p>)}
+    {active && !receiver && (snapshot.pairingCode
+      ? <ResultPlayer pairing transfer={{ id: 'pairing', chunks: [snapshot.pairingCode], missing: null }} />
+      : snapshot.transfer
+        ? <ResultPlayer transfer={snapshot.transfer} />
+        : <p className="rounded-xl border p-5">等待下一条命令。收到任务后将自动展示状态和结果二维码。</p>)}
     {snapshot.jobs.length > 0 && <div className="space-y-3"><h3 className="font-medium">任务记录</h3>{snapshot.jobs.map(job => <article key={job.jobId} className="space-y-2 rounded-xl border p-4">
       <p className="font-medium">{job.target} · {job.state}{job.exitCode !== undefined && ` · exit ${job.exitCode ?? '未知'}`}</p>
       <p className="break-all text-xs text-muted-foreground">{job.jobId}{job.delivered === false && ' · 等待结果确认'}</p>

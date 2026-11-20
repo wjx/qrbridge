@@ -155,3 +155,41 @@ test('receiver restart during partial result resets sender playback to all chunk
   assert.equal(receiver.status(job.jobId).stdout, 'a'.repeat(3000))
   assert.equal(p.calls(), 1)
 })
+
+test('first-run QR pairing confirms both peers and survives a restart', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'qrbridge-pairing-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const senderDir = path.join(root, 'sender'), receiverDir = path.join(root, 'receiver')
+  const sender = new ExecutionBridge(senderDir, { execute: async () => ({ state: 'completed' }) })
+  const receiver = new ExecutionBridge(receiverDir)
+  sender.configure({ role: 'sender', targets: ['dev-server'] })
+  sender.start(); receiver.start()
+  const code = sender.snapshot().pairingCode
+  assert.ok(code)
+  assert.equal(sender.snapshot().peerVerified, false)
+  receiver.receiveQR(code)
+  assert.equal(receiver.snapshot().pairingScanned, true)
+  assert.equal(receiver.snapshot().peerVerified, false)
+  assert.throws(() => receiver.submit({ target: 'dev-server', command: 'hostname' }), /Target/)
+
+  let clipboard
+  receiver.tick({ writeText: value => { clipboard = value } })
+  sender.tick({ readText: () => clipboard })
+  assert.equal(sender.snapshot().pairingCode, null)
+  assert.equal(sender.snapshot().peerVerified, true)
+  for (const chunk of sender.transfer.chunks) receiver.receiveQR(chunk)
+  assert.equal(receiver.snapshot().peerVerified, true)
+  const job = receiver.submit({ target: 'dev-server', command: 'hostname' })
+  receiver.lastWrite = 0
+  receiver.tick({ writeText: value => { clipboard = value } })
+  sender.tick({ readText: () => clipboard })
+  await flush()
+  assert.equal(sender.status(job.jobId).state, 'completed')
+
+  const restartedSender = new ExecutionBridge(senderDir)
+  const restartedReceiver = new ExecutionBridge(receiverDir)
+  restartedSender.start(); restartedReceiver.start()
+  assert.equal(restartedSender.snapshot().pairingCode, null)
+  for (const chunk of restartedSender.transfer.chunks) restartedReceiver.receiveQR(chunk)
+  assert.equal(restartedReceiver.snapshot().peerVerified, true)
+})

@@ -167,18 +167,9 @@ Ubuntu 无需 Wine，会跳过 EXE 图标和元数据编辑。此命令只生成
 
 ### 首次配置
 
-1. 在发送端安装 OpenSSH 客户端，确保 `ssh` 在 PATH 中。在该用户的 `~/.ssh/config`（Windows 通常为 `%USERPROFILE%\.ssh\config`）配置目标别名，例如：
-
-   ```sshconfig
-   Host dev-server
-       HostName 192.168.1.20
-       User developer
-       IdentityFile ~/.ssh/id_ed25519
-   ```
-
-   先在发送端终端运行 `ssh dev-server hostname`，完成主机指纹核对并确认无交互登录可用。应用使用 `BatchMode=yes`、`StrictHostKeyChecking=yes`，不会弹出密码输入或自动信任未知主机。带口令的密钥需要预先通过 SSH agent 解锁。目标主机可以使用其默认远端 shell；第一版不提供 PTY、stdin、交互终端或交互式 sudo。
+1. 在发送端安装 OpenSSH 客户端，确保 `ssh` 在 PATH 中。先在发送端终端运行 `ssh alice@192.168.1.20 hostname`（替换为实际用户名和地址），完成主机指纹核对并确认密钥登录可用。应用使用 `BatchMode=yes`、`StrictHostKeyChecking=yes`。带口令的密钥需要预先通过 SSH agent 解锁。执行模式支持非交互命令。
 2. 两端打开执行模式，选择各自的发送端 / 接收端角色。
-3. 发送端填写允许使用的 SSH Host 别名，每行一个（字母、数字、下划线、连字符），启用执行模式。首次配对时会自动显示配对二维码，仅向接收端展示。SSH 地址、用户名和私钥留在发送端 SSH 配置中。
+3. 发送端填写允许使用的 SSH 目标，每行一个，例如 `alice@192.168.1.20`、`alice@[2001:db8::20]` 或已有的 SSH 别名，启用执行模式。首次配对时会自动显示配对二维码，仅向接收端展示。SSH 私钥由发送端的 OpenSSH 管理。
 4. 接收端设置 MCP 端口（默认 `3210`），启用执行模式，点击 **选择屏幕 / 窗口**，框选发送端二维码区域或使用全窗口。首次扫描配对码后保持扫描。发送端收到剪贴板确认后会显示「已配对」并切换到握手二维码。接收端验证握手后也会显示「已配对」，同时获得可用目标列表。密钥保存在本机，之后可以直接扫描握手二维码。
 5. 可先使用 **手动执行** 提交 `hostname` 验证，再连接 MCP。保持扫码，任务状态和最终结果会自动归档；收完一份消息后继续扫描下一份。剪贴板会被持续更新为命令与缺片反馈的统一消息。
 
@@ -195,7 +186,7 @@ Ubuntu 无需 Wine，会跳过 EXE 图标和元数据编辑。此命令只生成
 
 服务仅监听 `127.0.0.1`，只在接收端执行模式运行；不接受浏览器 Origin。MCP 客户端须与接收端桌面程序运行在同一台机器上，并支持自定义认证头。实现使用官方 MCP SDK 的无状态 Streamable HTTP JSON 响应。
 
-- `ssh_targets()`：返回已通过二维码接收的目标别名。
+- `ssh_targets()`：返回已通过二维码接收的 SSH 目标。
 - `ssh_submit({ target, command, timeoutMs?, requestId? })`：提交任务并立即返回 `jobId` 和 `queued` 状态。默认超时 30 秒，可设 1–300 秒。客户端重试提交时应复用 `requestId`，相同 ID 不会重复执行；相同 ID 配不同命令会被拒绝。
 - `ssh_status({ jobId })`：查询本地缓存的状态、`stdout`、`stderr`、`exitCode` 和 `truncated`；依靠持续扫码接收更新，不长时间阻塞 MCP 调用。
 

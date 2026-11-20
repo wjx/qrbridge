@@ -4,7 +4,7 @@ const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/ser
 const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js')
 const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false })
 const tools = [
-  { name: 'ssh_targets', description: 'List SSH target aliases received from the sender handshake. Start screen scanning first.', inputSchema: object({}) },
+  { name: 'ssh_targets', description: 'List SSH destinations received from the sender handshake. Start screen scanning first.', inputSchema: object({}) },
   { name: 'ssh_submit', description: 'Queue one non-interactive SSH command. Returns a job ID immediately; poll ssh_status for QR-delivered results. Reuse requestId when retrying a submission. Never automatically resubmit an unknown outcome under a new ID.', inputSchema: object({ target: { type: 'string' }, command: { type: 'string', maxLength: 8000 }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 300000, default: 30000 }, requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,80}$' } }, ['target', 'command']) },
   { name: 'ssh_status', description: 'Read locally cached task status, stdout, stderr, exitCode and truncation flag. Keep scanning sender QR codes to receive updates. unknown means the command may still be running.', inputSchema: object({ jobId: { type: 'string' } }, ['jobId']) },
 ]

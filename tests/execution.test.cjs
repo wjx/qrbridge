@@ -193,3 +193,32 @@ test('first-run QR pairing confirms both peers and survives a restart', async t 
   for (const chunk of restartedSender.transfer.chunks) restartedReceiver.receiveQR(chunk)
   assert.equal(restartedReceiver.snapshot().peerVerified, true)
 })
+
+test('direct SSH addresses travel from the allowlist through the handshake and command request', async t => {
+  const destinations = ['192.168.1.20', 'alice@ssh.example.com', 'alice@[2001:db8::20]']
+  let executedTarget
+  const p = pair(t, async target => {
+    executedTarget = target
+    return { state: 'completed' }
+  })
+  p.sender.stop(); p.receiver.stop()
+  for (const invalid of ['alice@', 'ssh://example.com', '192.168.1.999', 'host -oProxyCommand=x']) {
+    assert.throws(() => p.sender.configure({ targets: [invalid] }), /Invalid settings/)
+  }
+  p.sender.configure({ targets: destinations })
+  p.sender.start(); p.receiver.start()
+  p.scan()
+  assert.deepEqual(p.receiver.targets, destinations)
+  p.receiver.submit({ target: destinations[2], command: 'hostname' })
+  p.pump(); await flush()
+  assert.equal(executedTarget, destinations[2])
+
+  const child = new EventEmitter(); child.stdout = new EventEmitter(); child.stderr = new EventEmitter()
+  const result = runSSH(executedTarget, { command: 'hostname', timeoutMs: 1000 }, (file, args) => {
+    assert.equal(file, 'ssh')
+    assert.deepEqual(args.slice(-3), ['--', 'alice@2001:db8::20', 'hostname'])
+    return child
+  })
+  child.emit('close', 0, null)
+  assert.equal((await result).state, 'completed')
+})

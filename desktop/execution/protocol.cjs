@@ -1,3 +1,4 @@
+const { isIP } = require('node:net')
 const { createHmac, timingSafeEqual, randomUUID, createHash } = require('node:crypto')
 const PREFIX = 'QREX1:'
 const MAX_CHUNKS = 1024
@@ -34,13 +35,28 @@ function parseQR(raw) {
   if (!Number.isInteger(index) || !Number.isInteger(total) || index < 1 || index > total || total > MAX_CHUNKS || match[4].length > 450) return null
   return { id: match[1], index, total, content: match[4] }
 }
+function parseTarget(value) {
+  if (typeof value !== 'string' || !value || value.length > 318 || /\s/.test(value)) return null
+  const parts = value.split('@')
+  if (parts.length > 2) return null
+  const [user, address] = parts.length === 2 ? parts : [null, parts[0]]
+  if (user !== null && !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(user)) return null
+  const bracketed = address.startsWith('[') && address.endsWith(']')
+  const host = bracketed ? address.slice(1, -1) : address
+  const ip = host.includes('%') ? 0 : isIP(host)
+  const alias = /^[A-Za-z0-9_-]{1,64}$/.test(host)
+  const dns = host.length <= 253 && host.includes('.') && /[A-Za-z]/.test(host) &&
+    host.replace(/\.$/, '').split('.').every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))
+  if (bracketed ? ip !== 6 : !ip && !alias && !dns) return null
+  return user ? `${user}@${host}` : host
+}
 function validateRequest(value) {
   if (!value || typeof value.jobId !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(value.jobId) ||
-    typeof value.target !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(value.target) ||
+    !parseTarget(value.target) ||
     typeof value.command !== 'string' || !value.command.trim() || value.command.length > 8000 || value.command.includes('\0') ||
     !Number.isInteger(value.timeoutMs) || value.timeoutMs < 1000 || value.timeoutMs > 300000 ||
     !Number.isSafeInteger(value.expiresAt)) throw new Error('Invalid execution request')
   return { jobId: value.jobId, target: value.target, command: value.command, timeoutMs: value.timeoutMs, expiresAt: value.expiresAt }
 }
 const terminal = state => ['completed', 'failed', 'unknown', 'expired'].includes(state)
-module.exports = { sessionId, sign, verify, encodeQR, parseQR, validateRequest, terminal, MAX_OUTPUT }
+module.exports = { sessionId, sign, verify, encodeQR, parseQR, parseTarget, validateRequest, terminal, MAX_OUTPUT }

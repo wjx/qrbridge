@@ -1,6 +1,6 @@
 const { spawn } = require('node:child_process')
-const { MAX_OUTPUT } = require('./protocol.cjs')
-// OpenSSH reads host/user/key/known_hosts from the sender's own SSH config.
+const { MAX_OUTPUT, parseTarget } = require('./protocol.cjs')
+// OpenSSH uses the sender's local keys and known_hosts.
 // shell:false keeps the requested remote command out of the local shell.
 function runSSH(target, request, spawnProcess = spawn) {
   return new Promise(resolve => {
@@ -19,7 +19,9 @@ function runSSH(target, request, spawnProcess = spawn) {
       if (bytes.length > remaining) truncated = true
     }
     try {
-      child = spawnProcess('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=2', target, request.command], { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      const destination = parseTarget(target)
+      if (!destination) throw new Error('Invalid SSH target')
+      child = spawnProcess('ssh', ['-T', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=2', '--', destination, request.command], { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
       child.stdout.on('data', collect(stdout)); child.stderr.on('data', collect(stderr))
       child.on('error', error => finish({ state: 'failed', exitCode: null, error: error.message }))
       child.on('close', (code, signal) => finish({ state: code === 255 || signal ? 'unknown' : 'completed', exitCode: code, ...(code === 255 || signal ? { error: 'SSH disconnected; remote execution outcome is unknown. Do not automatically retry.' } : {}) }))

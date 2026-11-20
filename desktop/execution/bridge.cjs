@@ -1,7 +1,7 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const { randomBytes, randomUUID } = require('node:crypto')
-const { sign, verify, sessionId, encodeQR, parseQR, validateRequest, terminal } = require('./protocol.cjs')
+const { sign, verify, sessionId, encodeQR, parseQR, parseTarget, validateRequest, terminal } = require('./protocol.cjs')
 const { runSSH } = require('./ssh.cjs')
 const PAIRING_PREFIX = 'QREX-PAIR1:'
 const PAIRING_CODE = /^QREX-PAIR1:([a-f0-9]{64}):([a-f0-9-]{36})$/
@@ -31,10 +31,8 @@ class ExecutionBridge {
   validateConfig(config) {
     if (!config || !['sender', 'receiver'].includes(config.role) || !/^[a-f0-9]{64}$/.test(config.key) ||
       !/^[a-f0-9]{64}$/.test(config.token) || !Number.isInteger(config.port) || config.port < 1024 || config.port > 65535 ||
-      !Array.isArray(config.targets) || config.targets.length > 32 || config.targets.some(t => typeof t !== 'string' || !/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/.test(t)) ||
-      new Set(config.targets).size !== config.targets.length) throw new Error('Invalid settings: use a 64-character hexadecimal pairing key, SSH aliases, and port 1024–65535')
-    // Public target names intentionally exclude dots to keep request validation simple.
-    if (config.targets.some(t => !/^[A-Za-z0-9_-]{1,64}$/.test(t))) throw new Error('SSH aliases may contain letters, digits, underscores and hyphens')
+      !Array.isArray(config.targets) || config.targets.length > 32 || config.targets.some(t => !parseTarget(t)) ||
+      new Set(config.targets).size !== config.targets.length) throw new Error('Invalid settings: use a 64-character hexadecimal pairing key, SSH targets, and port 1024–65535')
     return { role: config.role, key: config.key, targets: [...config.targets], port: config.port, token: config.token }
   }
   configure(config) {
@@ -242,7 +240,7 @@ class ExecutionBridge {
       const text = Array.from({ length: chunk.total }, (_, i) => incoming.parts.get(i + 1)).join('')
       const message = verify(text, this.config.key, 'result')
       if (!message) { this.incoming = null; this.ack = null; throw new Error('Result authentication failed. Check the pairing key on both devices.') }
-      if (message.type === 'hello' && Array.isArray(message.targets) && message.targets.length <= 32 && message.targets.every(t => typeof t === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(t))) {
+      if (message.type === 'hello' && Array.isArray(message.targets) && message.targets.length <= 32 && message.targets.every(parseTarget)) {
         if (!this.paired) this.savePairing(this.config, true)
         this.pairingNonce = null
         this.peerVerified = true

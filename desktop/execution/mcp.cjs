@@ -3,9 +3,10 @@ const { Server } = require('@modelcontextprotocol/sdk/server/index.js')
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js')
 const { ListToolsRequestSchema, CallToolRequestSchema } = require('@modelcontextprotocol/sdk/types.js')
 const object = (properties, required = []) => ({ type: 'object', properties, required, additionalProperties: false })
+const targetSelection = 'Call ssh_targets before submitting a command. Use the exact target the user selected from the returned list. If the user has not selected a target and exactly one is available, use it. If multiple targets are available and the user has not clearly selected one, list the available targets and ask which one to use. Wait for the user to choose before calling ssh_submit. If no targets are available, ask the user to check the sender configuration and scan the handshake QR code.'
 const tools = [
   { name: 'ssh_targets', description: 'List SSH destinations received from the sender handshake. Start screen scanning first.', inputSchema: object({}) },
-  { name: 'ssh_submit', description: 'Queue one non-interactive SSH command. Returns a job ID immediately; poll ssh_status for QR-delivered results. Reuse requestId when retrying a submission. Never automatically resubmit an unknown outcome under a new ID.', inputSchema: object({ target: { type: 'string' }, command: { type: 'string', maxLength: 8000 }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 300000, default: 30000 }, requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,80}$' } }, ['target', 'command']) },
+  { name: 'ssh_submit', description: `Queue one non-interactive SSH command. ${targetSelection} Returns a job ID immediately; poll ssh_status for QR-delivered results. Reuse requestId when retrying a submission. Never automatically resubmit an unknown outcome under a new ID.`, inputSchema: object({ target: { type: 'string' }, command: { type: 'string', maxLength: 8000 }, timeoutMs: { type: 'integer', minimum: 1000, maximum: 300000, default: 30000 }, requestId: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,80}$' } }, ['target', 'command']) },
   { name: 'ssh_status', description: 'Read locally cached task status, stdout, stderr, exitCode and truncation flag. Keep scanning sender QR codes to receive updates. unknown means the command may still be running.', inputSchema: object({ jobId: { type: 'string' } }, ['jobId']) },
 ]
 async function startMCP(bridge, port = bridge.config.port) {
@@ -27,7 +28,7 @@ async function startMCP(bridge, port = bridge.config.port) {
       }
       let body
       try { body = JSON.parse(Buffer.concat(parts).toString('utf8')) } catch { res.writeHead(400).end(); return }
-      const server = new Server({ name: 'qrbridge-ssh', version: '0.1.0' }, { capabilities: { tools: {} } })
+      const server = new Server({ name: 'qrbridge-ssh', version: '0.1.0' }, { capabilities: { tools: {} }, instructions: targetSelection })
       server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
       server.setRequestHandler(CallToolRequestSchema, async request => {
         try {

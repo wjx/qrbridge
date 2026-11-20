@@ -22,7 +22,12 @@ test('official MCP client initializes, discovers tools, submits and queries; HTT
   const client = new Client({ name: 'qrbridge-test', version: '1.0' })
   await client.connect(new StreamableHTTPClientTransport(url, { requestInit: { headers } }))
   t.after(() => client.close())
-  assert.deepEqual((await client.listTools()).tools.map(t => t.name), ['ssh_targets', 'ssh_submit', 'ssh_status'])
+  const instructions = client.getInstructions()
+  assert.match(instructions, /multiple targets.*ask which one to use/)
+  assert.match(instructions, /Wait for the user to choose before calling ssh_submit/)
+  const { tools } = await client.listTools()
+  assert.deepEqual(tools.map(t => t.name), ['ssh_targets', 'ssh_submit', 'ssh_status'])
+  assert.ok(tools.find(t => t.name === 'ssh_submit').description.includes(instructions))
   const targets = await client.callTool({ name: 'ssh_targets', arguments: {} })
   assert.deepEqual(JSON.parse(targets.content[0].text).targets, ['dev-server'])
   const args = { target: 'dev-server', command: 'hostname', requestId: 'mcp-retry' }
